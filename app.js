@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.6";
+const APP_VERSION = "0.5.7";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -2376,6 +2376,7 @@ function applyMobileSyncUI() {
                     <button type="button" id="btn-mobile-refresh" class="btn-primary w-100 mt-3" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         <i class="fa-solid fa-arrows-rotate"></i> Ververs handmatig
                     </button>
+                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Build info laden...</div>
                 `;
                 
                 const btnRefresh = document.getElementById("btn-mobile-refresh");
