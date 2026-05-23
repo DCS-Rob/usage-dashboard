@@ -1,0 +1,31 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgGlow" cx="34" cy="24" r="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D8FFF2" stop-opacity=".74"/>
+      <stop offset=".42" stop-color="#0D9B76"/>
+      <stop offset="1" stop-color="#062D27"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="14" y1="12" x2="82" y2="86" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8FFF2"/>
+      <stop offset=".52" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#057A62"/>
+    </linearGradient>
+    <filter id="shadow" x="-24" y="-24" width="144" height="144" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#10B981" flood-opacity=".5"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <circle cx="48" cy="48" r="42" fill="url(#bgGlow)" filter="url(#shadow)"/>
+  <circle cx="48" cy="48" r="40" stroke="url(#ring)" stroke-width="4"/>
+  <circle cx="48" cy="48" r="31" fill="#052A24" fill-opacity=".38" stroke="#ECFFF9" stroke-opacity=".22"/>
+  <g stroke="#ECFFF9" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M48 24C56.4 24 63.4 29.8 65.2 37.6"/>
+    <path d="M65.2 37.6C72.7 41.6 75.7 50.9 71.8 58.3"/>
+    <path d="M71.8 58.3C67.7 65.7 58.5 68.6 51 64.8"/>
+    <path d="M51 64.8C44 69.8 34.3 68.2 29.2 61.2"/>
+    <path d="M29.2 61.2C24.2 54.4 25.7 44.7 32.4 39.6"/>
+    <path d="M32.4 39.6C31.8 31.1 38.8 24 48 24"/>
+    <path d="M38 36L58 48L38 60"/>
+    <path d="M58 36L38 48L58 60"/>
+  </g>
+</svg>

@@ -1,0 +1,25 @@
+# OS / Drive sync rommel
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node (mocht het ooit nodig zijn)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Lokale credentials / secrets
+.env
+.env.local
+*.key
+
+# Netlify lokale config (we deployen via Git, niet via CLI)
+.netlify/

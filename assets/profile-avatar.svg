@@ -1,0 +1,28 @@
+<svg width="112" height="112" viewBox="0 0 112 112" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="skin" cx="42" cy="34" r="76" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE4C7"/>
+      <stop offset=".48" stop-color="#C98763"/>
+      <stop offset="1" stop-color="#43253B"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="18" y1="12" x2="96" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A6FFFF"/>
+      <stop offset=".48" stop-color="#37E2A4"/>
+      <stop offset="1" stop-color="#4C6FFF"/>
+    </linearGradient>
+    <filter id="glow" x="-28" y="-28" width="168" height="168" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#37E2A4" flood-opacity=".48"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity=".42"/>
+    </filter>
+  </defs>
+  <circle cx="56" cy="56" r="47" fill="#071222" filter="url(#glow)"/>
+  <circle cx="56" cy="56" r="44.5" stroke="url(#ring)" stroke-width="5"/>
+  <circle cx="56" cy="49" r="24" fill="url(#skin)"/>
+  <path d="M30 90c4-17 15-26 26-26s22 9 26 26" fill="#14213D"/>
+  <path d="M34 38c6-17 31-24 47-3 0 0-5-4-13-5-11-1-21 5-34 8Z" fill="#2A1730"/>
+  <circle cx="47" cy="51" r="2.2" fill="#1A1020"/>
+  <circle cx="65" cy="51" r="2.2" fill="#1A1020"/>
+  <path d="M50 61c4 4 9 4 13 0" stroke="#6F3B42" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="87" cy="86" r="10" fill="#071222"/>
+  <circle cx="87" cy="86" r="7" fill="#20E79E"/>
+</svg>

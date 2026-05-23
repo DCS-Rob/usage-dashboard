@@ -1,0 +1,392 @@
+/* ==========================================================================
+   USAGE DASHBOARD - BACKGROUND SERVICE WORKER (Manifest V3)
+   ========================================================================== */
+
+// Open the dashboard tab when the user clicks the extension action icon
+chrome.action.onClicked.addListener(() => {
+    chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
+});
+
+// Initialize storage settings on install
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+        if (!res.lt_users) {
+            chrome.storage.local.set({ lt_users: {} });
+        }
+    });
+    ensureRemoteRefreshAlarm();
+});
+
+// Ook bij browser-start opnieuw zetten (service workers worden gesuspend)
+chrome.runtime.onStartup.addListener(() => {
+    ensureRemoteRefreshAlarm();
+});
+
+function ensureRemoteRefreshAlarm() {
+    if (!chrome.alarms) return;
+    chrome.alarms.get("remoteRefreshPoll", (existing) => {
+        if (!existing) {
+            // Periodiek pollen of de telefoon een refresh heeft aangevraagd.
+            // Minimum periodInMinutes is 0.5 (30s) in MV3.
+            chrome.alarms.create("remoteRefreshPoll", { periodInMinutes: 0.5, delayInMinutes: 0.1 });
+        }
+    });
+}
+
+if (chrome.alarms && chrome.alarms.onAlarm) {
+    chrome.alarms.onAlarm.addListener((alarm) => {
+        if (alarm.name === "remoteRefreshPoll") {
+            checkForRemoteRefreshRequestBG();
+        }
+    });
+}
+
+// Listen for messages from content scripts (scrapers) or the dashboard UI
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "SYNC_FROM_TAB") {
+        const { provider, data } = message;
+        handleTabSync(provider, data)
+            .then(() => sendResponse({ status: "success" }))
+            .catch(err => sendResponse({ status: "error", error: err.message }));
+        return true; // Keep message channel open for async responses
+    } else if (message.type === "AUTO_LOG_MESSAGE") {
+        const { provider, log } = message;
+        handleAutoLog(provider, log)
+            .then(() => sendResponse({ status: "success" }))
+            .catch(err => sendResponse({ status: "error", error: err.message }));
+        return true; // Keep message channel open for async responses
+    }
+    return false;
+});
+
+// Handle data scraped from settings/analytics tabs
+function handleTabSync(provider, data) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+            const currentUser = res.lt_current_user;
+            const users = res.lt_users || {};
+            
+            if (!currentUser || !users[currentUser]) {
+                resolve();
+                return;
+            }
+            
+            const user = users[currentUser];
+            if (!user.syncStatus) user.syncStatus = {};
+            
+            // Save current timestamp and provider details
+            user.syncStatus[provider] = {
+                lastSynced: Date.now(),
+                ...data
+            };
+            
+            // If we scraped actual counts (e.g. messages left or spent percentage), override calculations
+            if (provider === "claude" && data.tokensUsed !== undefined) {
+                alignRollingLogs(user, "claude", data.tokensUsed);
+            } else if (provider === "chatgpt" && data.messagesUsed !== undefined) {
+                alignRollingLogs(user, "chatgpt", data.messagesUsed);
+            }
+            // Gemini limit-reached detection: store in syncStatus so dashboard can read it
+            if (provider === "gemini" && data.limitReached) {
+                user.syncStatus.gemini = { lastSynced: Date.now(), limitReached: true };
+            }
+
+            chrome.storage.local.set({ lt_users: users }, () => {
+                // Broadcast state update to the dashboard tab
+                broadcastStateUpdate();
+                // Automatically push data to the cloud in real-time
+                pushUserDataToCloud(user)
+                    .then(resolve)
+                    .catch(reject);
+            });
+        });
+    });
+}
+
+// Handle auto-tracked prompts sent in chat tabs
+function handleAutoLog(provider, logData) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+            const currentUser = res.lt_current_user;
+            const users = res.lt_users || {};
+            
+            if (!currentUser || !users[currentUser]) {
+                resolve();
+                return;
+            }
+            
+            const user = users[currentUser];
+            if (!user.logs) user.logs = [];
+
+            // Check if this message was already logged (prevent duplicate entries)
+            const duplicate = user.logs.some(l => l.id === logData.id || (Math.abs(l.timestamp - logData.timestamp) < 2000 && l.model === logData.model));
+            if (duplicate) {
+                resolve();
+                return;
+            }
+
+            // Log context accumulation for active threads if applicable
+            if (logData.threadId && user.threads) {
+                const thread = user.threads.find(t => t.id === logData.threadId);
+                if (thread) {
+                    logData.tokens = logData.tokens + (thread.tokensAccumulated || 0);
+                    thread.tokensAccumulated = logData.tokens;
+                    thread.messageCount = (thread.messageCount || 0) + 1;
+                    thread.lastMessageAt = logData.timestamp;
+                }
+            }
+
+            user.logs.push(logData);
+            chrome.storage.local.set({ lt_users: users }, () => {
+                broadcastStateUpdate();
+                // Automatically push data to the cloud in real-time
+                pushUserDataToCloud(user)
+                    .then(resolve)
+                    .catch(reject);
+            });
+        });
+    });
+}
+
+// Sync the local log history with scraped limits
+function alignRollingLogs(user, model, rawUsed) {
+    if (!user.logs) user.logs = [];
+    const now = Date.now();
+    
+    if (model === "chatgpt") {
+        const windowMs = (user.settings?.chatgpt?.windowHours || 3) * 60 * 60 * 1000;
+        
+        // Count how many we currently have logged in the last 3 hours
+        const activeLogs = user.logs.filter(l => l.model === "chatgpt" && (now - l.timestamp) < windowMs);
+        const diff = rawUsed - activeLogs.length;
+        
+        // If there's a discrepancy, generate proxy logs to align the numbers
+        if (diff > 0) {
+            for (let i = 0; i < diff; i++) {
+                user.logs.push({
+                    id: "sync_gpt_" + now + "_" + i,
+                    timestamp: now - (i * 10 * 60 * 1000), // Space them out slightly in the past
+                    model: "chatgpt",
+                    size: "medium",
+                    tokens: 0,
+                    threadId: "",
+                    note: "Gesynchroniseerde status correctie"
+                });
+            }
+        }
+    } else if (model === "claude") {
+        const windowMs = (user.settings?.claude?.windowHours || 5) * 60 * 60 * 1000;
+        const activeLogs = user.logs.filter(l => l.model === "claude" && (now - l.timestamp) < windowMs);
+        const tokensUsed = activeLogs.reduce((sum, l) => sum + l.tokens, 0);
+        
+        const diffTokens = rawUsed - tokensUsed;
+        if (diffTokens > 2000) {
+            // Generate a correction log for tokens
+            user.logs.push({
+                id: "sync_claude_" + now,
+                timestamp: now - 60000,
+                model: "claude",
+                size: "custom",
+                tokens: diffTokens,
+                threadId: "",
+                note: "Gesynchroniseerde status correctie"
+            });
+        }
+    }
+}
+
+// Helper to broadcast state changes to active extension tabs
+function broadcastStateUpdate() {
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            try {
+                chrome.tabs.sendMessage(tab.id, { type: "STATE_UPDATED" });
+            } catch (e) {
+                // Ignore errors for tabs that aren't listening
+            }
+        });
+    });
+}
+
+/* ==========================================================================
+   ENCRYPTION & BACKGROUND CLOUD UPLOAD SERVICE
+   ========================================================================== */
+const CryptoSync = {
+    encrypt(text, key) {
+        const textToBytes = new TextEncoder().encode(text);
+        const keyBytes = new TextEncoder().encode(key);
+        let binaryStr = "";
+        for (let i = 0; i < textToBytes.length; i++) {
+            const encryptedByte = textToBytes[i] ^ keyBytes[i % keyBytes.length];
+            binaryStr += String.fromCharCode(encryptedByte);
+        }
+        return btoa(binaryStr);
+    },
+
+    decrypt(base64Str, key) {
+        const binaryStr = atob(base64Str);
+        const keyBytes = new TextEncoder().encode(key);
+        const decryptedBytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+            decryptedBytes[i] = binaryStr.charCodeAt(i) ^ keyBytes[i % keyBytes.length];
+        }
+        return new TextDecoder().decode(decryptedBytes);
+    }
+};
+
+function logSync(message) {
+    console.log("[USAGE DASHBOARD Background Sync Log]", message);
+    chrome.storage.local.get(["lt_sync_logs"], (res) => {
+        const logs = res.lt_sync_logs || [];
+        const timeStr = new Date().toLocaleTimeString("nl-NL");
+        logs.unshift(`[${timeStr}] ${message}`);
+        if (logs.length > 50) logs.pop();
+        chrome.storage.local.set({ lt_sync_logs: logs });
+    });
+}
+
+// =================================================================
+// Remote refresh listener (draait in service worker, werkt ook als
+// het dashboardtabblad niet open is). Voorkomt dubbele triggers via
+// een throttle in chrome.storage.
+// =================================================================
+let lastBgScrapeTrigger = 0;
+
+function checkForRemoteRefreshRequestBG() {
+    chrome.storage.local.get(["lt_sync_config"], (res) => {
+        const config = res.lt_sync_config;
+        if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
+
+        fetch(`https://api.npoint.io/${config.binId}?nocache=${Date.now()}`, {
+            cache: "no-store",
+            headers: {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache"
+            }
+        })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (!data || !data.data) return;
+            let decryptedData;
+            try {
+                decryptedData = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
+            } catch (e) {
+                logSync(`[Remote Poll BG DBG] decrypt mislukt: ${e.message || e}`);
+                return;
+            }
+
+            // Diagnostische trace
+            const reqAt = decryptedData.refreshRequestedAt
+                ? new Date(decryptedData.refreshRequestedAt).toLocaleTimeString("nl-NL")
+                : "n/a";
+            logSync(`[Remote Poll BG DBG] flag=${decryptedData.refreshRequested} reqAt=${reqAt}`);
+
+            if (decryptedData.refreshRequested !== true) return;
+
+            const reqTime = decryptedData.refreshRequestedAt || 0;
+            // Negeer requests ouder dan 2 minuten (oude lussen)
+            if (Date.now() - reqTime >= 120000) {
+                resetRemoteRefreshRequestFlagBG(config);
+                return;
+            }
+
+            // Throttle: max 1 scrape-trigger per 45s vanuit background
+            if (Date.now() - lastBgScrapeTrigger < 45000) return;
+            lastBgScrapeTrigger = Date.now();
+
+            logSync("[Cloud Remote BG] Telefoon vroeg om refresh — scrapers worden op achtergrond gestart.");
+            triggerScrapeFromBackground("claude");
+            setTimeout(() => triggerScrapeFromBackground("chatgpt"), 1200);
+        })
+        .catch(() => { /* stil */ });
+    });
+}
+
+function triggerScrapeFromBackground(provider) {
+    const queryPattern = provider === "claude" ? "*://*.claude.ai/*" : "*://*.chatgpt.com/*";
+    const fallbackUrl = provider === "claude"
+        ? "https://claude.ai/settings/usage"
+        : "https://chatgpt.com/codex/cloud/settings/analytics#personal-usage";
+    const matchPart = provider === "claude" ? "settings/usage" : "analytics";
+
+    chrome.tabs.query({ url: queryPattern }, (tabs) => {
+        const existingTab = (tabs || []).find(t => t.url && t.url.includes(matchPart));
+        if (existingTab) {
+            // Stille reload — gebruiker blijft op huidige tab
+            chrome.tabs.reload(existingTab.id);
+        } else {
+            // Open op achtergrond, sluit na 8.5s
+            chrome.tabs.create({ url: fallbackUrl, active: false }, (newTab) => {
+                if (!newTab) return;
+                setTimeout(() => {
+                    try { chrome.tabs.remove(newTab.id); } catch (e) { /* ignore */ }
+                }, 8500);
+            });
+        }
+    });
+}
+
+function resetRemoteRefreshRequestFlagBG(config) {
+    chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+        const user = (res.lt_users || {})[res.lt_current_user];
+        if (!user) return;
+        const dataToUpload = {
+            logs: user.logs || [],
+            threads: user.threads || [],
+            settings: user.settings || {},
+            syncStatus: user.syncStatus || {},
+            refreshRequested: false,
+            refreshRequestedAt: null
+        };
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
+        fetch(`https://api.npoint.io/${config.binId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: encryptedStr })
+        }).catch(() => {});
+    });
+}
+
+function pushUserDataToCloud(user) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get(["lt_sync_config"], (res) => {
+            const config = res.lt_sync_config;
+            if (!config || !config.enabled || !config.binId || !config.pairingKey) {
+                logSync("[Cloud Sync] Overslaan: Geen actieve mobiele koppeling ingesteld.");
+                resolve();
+                return;
+            }
+            
+            logSync(`[Cloud Sync] Uploaden van gegevens gestart voor bin: ${config.binId}...`);
+            
+            const dataToUpload = {
+                logs: user.logs || [],
+                threads: user.threads || [],
+                settings: user.settings || {},
+                syncStatus: user.syncStatus || {},
+                refreshRequested: false, // Reset remote trigger!
+                refreshRequestedAt: null
+            };
+            
+            const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
+            
+            fetch(`https://api.npoint.io/${config.binId}`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ data: encryptedStr })
+            })
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);
+                logSync(`[Cloud Sync] Gegevens succesvol geüpload naar cloud sync (bin: ${config.binId})!`);
+                resolve();
+            })
+            .catch(err => {
+                logSync(`[Cloud Sync FOUT] Upload naar cloud sync mislukt: ${err.message || err}`);
+                // We resolve anyway so that the message channel finishes gracefully
+                resolve();
+            });
+        });
+    });
+}
