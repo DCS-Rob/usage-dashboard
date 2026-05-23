@@ -162,6 +162,35 @@ To diagnose this, run these checks:
 
 ---
 
+## 5a. Deployment & kosten (Netlify)
+
+De mobiele PWA wordt gehost op **https://magnificent-pudding-e68600.netlify.app**. De Chrome-extensie draait lokaal in elke browser zonder deploy.
+
+### Hoe wijzigingen live komen op de PWA
+
+Wijzigingen in `app.js`, `index.html`, `style.css`, `sw.js`, `manifest.webmanifest` of `assets/*` moeten opnieuw geüpload worden naar Netlify. Wijzigingen in `background.js`, `content.js`, of `manifest.json` (Chrome-extensie deel) gaan **niet** via Netlify — die hoeven alleen lokaal opnieuw geladen via `chrome://extensions` → Reload.
+
+### Deploy-kosten
+
+Iedere production deploy op Netlify kost ~**15 credits** ongeacht of het via drag-and-drop, Netlify CLI of Git-koppeling gaat. Het type deploy-trigger verandert de kosten *niet*. Strategie: bundel meerdere wijzigingen tot één deploy in plaats van na elke kleine fix opnieuw te uploaden.
+
+### Deploy-methoden (geen kostenverschil, wel workflow-verschil)
+
+1. **Drag-and-drop** (huidig): Netlify dashboard → site → Deploys-tab → folder selecteren. Foutgevoelig (bestand vergeten = stuk).
+2. **Netlify CLI**: één commando `netlify deploy --prod --dir=.`. Geen geheugenwerk over welke bestanden, maar Node + login vereist.
+3. **Git-gekoppeld (GitHub)**: `git push` → automatische deploy. Geeft bovendien versiegeschiedenis en eenvoudige rollback. Zelfde credits per deploy.
+
+### Delen met anderen — twee verschillende scenario's
+
+| Scenario | Oplossing | Vereist GitHub? |
+|----------|-----------|-----------------|
+| Iemand moet alleen het dashboard *zien* op zijn telefoon | Open PC-extensie → Settings → Mobiele Sync → QR-code scannen op de andere telefoon, of stuur de PWA-link `?key=...&bin=...` door | **Nee** |
+| Iemand moet mee kunnen *ontwikkelen* aan de code | Private GitHub-repo + collaborator-invite, of Public repo en clonelink delen | Ja |
+
+> **Belangrijk:** alle gegevens die naar npoint.io gaan zijn end-to-end versleuteld met de pairing key. Een gedeelde PWA-URL geeft alleen toegang aan wie de specifieke key in de URL heeft. Behandel die URL daarom als een wachtwoord — niet publiek delen.
+
+---
+
 ## 5b. Versiebeheer-protocol (verplicht bij iedere wijziging)
 
 Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest.json` of `sw.js` moet samengaan met:
@@ -178,6 +207,7 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 
 | Versie  | Datum       | Wijziging |
 |---------|-------------|-----------|
+| 0.5.5   | 2026-05-23  | Opruimen na geslaagde remote-sync: diagnostische `[Remote Poll DBG]` / `[Remote Poll BG DBG]` logs verwijderd (alleen detection-events worden nog gelogd). Dubbele cloud-push geëlimineerd: `STATE_UPDATED`-handler in app.js doet alleen nog UI-refresh i.p.v. extra `pushUserDataToCloud()` (background.js heeft die push al gedaan vóór de broadcast). Cache → v10. |
 | 0.5.4   | 2026-05-23  | Cache-busting via `?v=` query string op `app.js`/`style.css` in index.html zodat browsers gegarandeerd nieuwe code laden. SW gebruikt nu `skipWaiting` op message, en app.js doet `controllerchange`-triggered auto-reload. Build info-strip robuuster (paars/hard zichtbaar, toont altijd iets ook bij fouten). Cache → v9. |
 | 0.5.3   | 2026-05-23  | Build info-strip (linksonder) toont app-versie, omgeving (EXT/PWA), SW-cache versie en laatste 6 chars van binId — zodat PC en telefoon visueel verifieerbaar dezelfde bin gebruiken. Service worker beantwoordt nu `GET_SW_VERSION` postMessage. Cache → v8. |
 | 0.5.2   | 2026-05-23  | Diagnostische logSync bij iedere remote-poll (zowel app.js als background.js); versiebeheer-protocol toegevoegd aan project_summary. |

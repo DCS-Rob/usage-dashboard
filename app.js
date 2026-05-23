@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.4";
+const APP_VERSION = "0.5.5";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -228,9 +228,9 @@ if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage)
     chrome.runtime.onMessage.addListener((message) => {
         if (message.type === "STATE_UPDATED") {
             console.log("[USAGE DASHBOARD] State updated in background. Syncing UI...");
-            loadUserData(() => {
-                pushUserDataToCloud();
-            });
+            // background.js heeft de cloud al gepusht voordat 'ie deze broadcast
+            // verstuurde — alleen UI verversen, geen tweede push doen.
+            loadUserData();
         }
     });
 }
@@ -2070,13 +2070,6 @@ function checkForRemoteRefreshRequest() {
             if (!data.data) return;
             const decryptedStr = CryptoSync.decrypt(data.data, config.pairingKey);
             const decryptedData = JSON.parse(decryptedStr);
-
-            // Diagnostische trace: log iedere poll-uitkomst zodat we kunnen
-            // zien wat de PC daadwerkelijk in de bin ziet.
-            const reqAt = decryptedData.refreshRequestedAt
-                ? new Date(decryptedData.refreshRequestedAt).toLocaleTimeString("nl-NL")
-                : "n/a";
-            logSync(`[Remote Poll DBG] flag=${decryptedData.refreshRequested} reqAt=${reqAt}`);
 
             if (decryptedData.refreshRequested === true) {
                 const reqTime = decryptedData.refreshRequestedAt || 0;

@@ -271,15 +271,9 @@ function checkForRemoteRefreshRequestBG() {
             try {
                 decryptedData = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
             } catch (e) {
-                logSync(`[Remote Poll BG DBG] decrypt mislukt: ${e.message || e}`);
+                logSync(`[Remote Poll BG] decrypt mislukt: ${e.message || e}`);
                 return;
             }
-
-            // Diagnostische trace
-            const reqAt = decryptedData.refreshRequestedAt
-                ? new Date(decryptedData.refreshRequestedAt).toLocaleTimeString("nl-NL")
-                : "n/a";
-            logSync(`[Remote Poll BG DBG] flag=${decryptedData.refreshRequested} reqAt=${reqAt}`);
 
             if (decryptedData.refreshRequested !== true) return;
 
