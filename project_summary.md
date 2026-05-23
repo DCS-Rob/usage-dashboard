@@ -258,3 +258,70 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 - `[x]` **Cache Busting**: `app.js?v=X.X.X` and `style.css?v=X.X.X` query strings in `index.html` and SW ASSETS list ensure fresh files are fetched on version bump.
 - `[x]` **GitHub + Netlify Auto-Deploy Pipeline**: `git push` → auto Netlify deploy. Repo is public (`DCS-Rob/usage-dashboard`) to bypass Netlify's verified-contributor restriction on private repos.
 - `[x]` **Version Protocol**: Every change bumps `manifest.json` version + `sw.js` CACHE_NAME + version history table in `project_summary.md`.
+
+---
+
+## 7. Roadmap & TODO
+
+Ideeën en verbeteringen voor toekomstige sessies, op volgorde van prioriteit.
+
+---
+
+### 🏠 TODO-1: Lokaal hosten op OpenClaw-infrastructuur (hoge prioriteit)
+
+**Idee:** De PWA verplaatsen van Netlify naar een van de altijd-online OpenClaw-machines, zodat er geen Netlify-credits meer verbruikt worden per deploy en de hosting volledig in eigen beheer is.
+
+**Beschikbare machines (beide altijd online via Tailscale):**
+
+| Machine | Tailscale URL | Aanbevolen voor |
+|---|---|---|
+| `robot-controller` | `https://robot-controller.tail00aec2.ts.net` | Voorkeur — draait al `main` web interface |
+| `agents-controller` | `https://agents-controller.tail00aec2.ts.net` | Alternatief |
+
+**Wat er nodig is:**
+
+1. **Statische fileserver op de machine** — de PWA is puur HTML/CSS/JS, geen backend nodig. Opties:
+   - `nginx` (aanbevolen — al aanwezig op de machine als OpenClaw een web interface draait)
+   - `python3 -m http.server` als snelle test
+   - Een kleine Node.js Express server (past in OpenClaw-ecosysteem)
+
+2. **HTTPS vereist voor PWA/Service Worker** — browsers weigeren Service Workers op onbeveiligde origins. Tailscale biedt gratis HTTPS via `https://<machine>.tail00aec2.ts.net` (Tailscale Serve feature). Alternatief: Let's Encrypt cert via Caddy/nginx.
+
+3. **Deploy workflow aanpassen** — in plaats van `git push` → Netlify, wordt het: `git push` → SSH naar machine → `git pull` + nginx serveert automatisch de nieuwe versie. Of een eenvoudige GitHub Action die via SSH deployt.
+
+4. **Pairing URL updaten** — na de verhuizing krijgt de telefoon een nieuwe PWA-URL (`https://robot-controller.tail00aec2.ts.net/...?key=...&bin=...`). Bestaande koppeling verwijderen en opnieuw koppelen via de extensie.
+
+5. **Telefoon toegang** — de telefoon moet verbinding kunnen maken met de Tailscale URL. Dit vereist dat **Tailscale ook op de telefoon is geïnstalleerd en ingelogd** op hetzelfde Tailscale-netwerk (`tail00aec2.ts.net`). Alternatief: machine publiek bereikbaar maken via een domein + reverse proxy (maar dat is minder veilig).
+
+**Voordeel ten opzichte van Netlify:**
+- Geen credits per deploy
+- Deploy = simpele `git pull` op de machine (seconden, geen build-queue)
+- Volledig in eigen beheer, geen externe afhankelijkheid
+- Kan in de toekomst uitgebreid worden met een server-side scraper (zie TODO-2)
+
+---
+
+### 🤖 TODO-2: Server-side scraper op OpenClaw (langetermijn)
+
+**Idee:** De Chrome-extensie is nu het enige scrape-mechanisme — de PC moet aan staan en Chrome open hebben. Een logische volgende stap is een **server-side headless scraper** op `robot-controller` of `agents-controller` die automatisch scrapet zonder afhankelijkheid van de PC-browser.
+
+**Aanpak:**
+- Playwright of Puppeteer (headless Chromium) op de machine, ingelogd op claude.ai/chatgpt.com met een bestaande sessie (cookies exporteren vanuit de extensie eenmalig)
+- Scraper draait als een systemd-service of OpenClaw-agent, scrapet elke X minuten
+- Resultaten gaan rechtstreeks naar npoint.io (of een lokale database als npoint.io wegvalt)
+- Telefoon en extensie lezen dan van dezelfde bron
+
+**Aandachtspunten:**
+- Claude.ai en ChatGPT.com hebben Cloudflare-bescherming — headless detection kan lastig zijn
+- Sessie-cookies verlopen, moeten periodiek ververst worden
+- De Chrome-extensie kan naast de server-side scraper blijven bestaan als fallback
+
+---
+
+### 🔌 TODO-3: npoint.io vervangen door eigen opslag (langetermijn)
+
+**Idee:** npoint.io is een gratis derde partij zonder SLA. Als alternatief kan de sync-data opgeslagen worden in een lokale database op de OpenClaw-machine (SQLite, Redis, of simpel JSON-bestand) en geserveerd worden via een kleine REST-API endpoint.
+
+**Voordeel:** Geen afhankelijkheid van externe dienst, geen limieten, betere privacy (data verlaat het eigen netwerk niet).
+
+**Vereiste:** De machine moet altijd bereikbaar zijn voor zowel de extensie (PC) als de telefoon — dit sluit direct aan op TODO-1.
