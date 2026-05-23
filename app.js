@@ -2,38 +2,17 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.5";
+const APP_VERSION = "0.5.6";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
 function renderBuildInfoStrip() {
-    try {
-        let strip = document.getElementById("build-info-strip");
-        if (!strip) {
-            strip = document.createElement("div");
-            strip.id = "build-info-strip";
-            Object.assign(strip.style, {
-                position: "fixed",
-                bottom: "4px",
-                left: "4px",
-                zIndex: "999999",
-                fontSize: "11px",
-                fontFamily: "monospace",
-                color: "#ffffff",
-                background: "rgba(99, 102, 241, 0.85)",
-                padding: "4px 8px",
-                borderRadius: "6px",
-                pointerEvents: "auto",
-                letterSpacing: "0.3px",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-                maxWidth: "90vw",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis"
-            });
-            (document.body || document.documentElement).appendChild(strip);
-        }
+    // Schrijft naar het #build-info-slot element binnen het Settings-tabblad.
+    // Geen floating overlay meer — alleen zichtbaar bij Settings.
+    const slot = document.getElementById("build-info-slot");
+    if (!slot) return; // Settings-tab nog niet gerenderd; volgende call lost het op
 
+    try {
         const env = (typeof chrome !== "undefined" && chrome.storage) ? "EXT" : "PWA";
         let binTail = "—";
         try {
@@ -43,13 +22,9 @@ function renderBuildInfoStrip() {
             if (cfg && cfg.binId) binTail = cfg.binId.slice(-6);
         } catch (e) {}
 
-        // Zet meteen iets neer zodat de strip ALTIJD zichtbaar is, ook als
-        // de SW-postMessage stilletjes faalt.
-        strip.textContent = `v${APP_VERSION} · ${env} · SW:laden... · bin:…${binTail}`;
-
         const render = (swVersion, pcBinTail) => {
             const tail = pcBinTail || binTail;
-            strip.textContent = `v${APP_VERSION} · ${env} · SW:${swVersion} · bin:…${tail}`;
+            slot.textContent = `v${APP_VERSION} · ${env} · SW:${swVersion} · bin:…${tail}`;
         };
 
         if (env === "PWA" && navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -64,12 +39,11 @@ function renderBuildInfoStrip() {
                 navigator.serviceWorker.controller.postMessage({ type: "GET_SW_VERSION" }, [channel.port2]);
                 setTimeout(() => { if (!answered) render("geen-antw"); }, 1500);
             } catch (e) {
-                render("err:" + (e.message || e).toString().slice(0, 20));
+                render("err");
             }
         } else if (env === "PWA") {
             render("geen-controller");
         } else {
-            // Extensie-omgeving: bin uit chrome.storage halen
             try {
                 chrome.storage.local.get(["lt_sync_config"], (res) => {
                     const cfg = res.lt_sync_config;
@@ -81,13 +55,7 @@ function renderBuildInfoStrip() {
             }
         }
     } catch (outerErr) {
-        // Last resort: zorg dat er IETS staat zodat we weten dat de functie liep
-        try {
-            const el = document.createElement("div");
-            el.textContent = "build-info FATAL: " + (outerErr.message || outerErr);
-            el.style.cssText = "position:fixed;bottom:4px;left:4px;z-index:999999;background:red;color:white;padding:4px 8px;font:11px monospace;";
-            document.body.appendChild(el);
-        } catch (_) {}
+        slot.textContent = "build-info fout: " + (outerErr.message || outerErr);
     }
 }
 
@@ -188,7 +156,9 @@ let usageChartInstance = null;
 document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     initApp();
-    // Toon kleine versie-/bin-strip onderaan zodat versie + bin-koppeling visueel verifieerbaar is
+    // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
+    // (zie nav-tab click handler in setupEventListeners). Doe één rendering
+    // bij start zodat het slot meteen gevuld is als gebruiker daar al staat.
     setTimeout(renderBuildInfoStrip, 500);
 
     // Register Service Worker for PWA compliance (standalone web mode only)
@@ -196,14 +166,20 @@ document.addEventListener("DOMContentLoaded", () => {
         navigator.serviceWorker.register("./sw.js")
             .then(reg => {
                 console.log("[USAGE DASHBOARD] Service Worker registered:", reg.scope);
-                // Wanneer een nieuwe SW geinstalleerd is en in 'waiting' staat,
-                // direct activeren zodat we geen extra reload-cyclus nodig hebben.
+
+                // Forceer onmiddellijk een update-check zodat de browser niet
+                // wacht op zijn eigen interne timer (kan tot 24u duren).
+                try { reg.update(); } catch (e) { /* ignore */ }
+                // En blijf checken iedere 5 minuten zolang de PWA open is.
+                setInterval(() => { try { reg.update(); } catch (e) {} }, 5 * 60 * 1000);
+
                 if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
                 reg.addEventListener("updatefound", () => {
                     const newSW = reg.installing;
                     if (!newSW) return;
                     newSW.addEventListener("statechange", () => {
                         if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+                            console.log("[USAGE DASHBOARD] Nieuwe SW geinstalleerd, skipWaiting...");
                             newSW.postMessage({ type: "SKIP_WAITING" });
                         }
                     });
@@ -1217,9 +1193,12 @@ function setupEventListeners() {
 
             document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
             document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
-            
+
             tab.classList.add("active");
             pane.classList.add("active");
+
+            // Build info regel verversen wanneer Settings open gaat
+            if (paneId === "tab-settings") renderBuildInfoStrip();
         });
     });
 

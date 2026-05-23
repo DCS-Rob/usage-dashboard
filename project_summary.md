@@ -207,6 +207,7 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 
 | Versie  | Datum       | Wijziging |
 |---------|-------------|-----------|
+| 0.5.6   | 2026-05-23  | Build info-strip verplaatst van floating overlay naar inline `#build-info-slot` binnen Settings-tab (alleen zichtbaar als gebruiker bewust naar Settings gaat). PWA forceert nu actief SW-update via `reg.update()` bij start + iedere 5 min, zodat nieuwe service workers niet uren wachten op Chrome's eigen update-timer. Cache → v11. |
 | 0.5.5   | 2026-05-23  | Opruimen na geslaagde remote-sync: diagnostische `[Remote Poll DBG]` / `[Remote Poll BG DBG]` logs verwijderd (alleen detection-events worden nog gelogd). Dubbele cloud-push geëlimineerd: `STATE_UPDATED`-handler in app.js doet alleen nog UI-refresh i.p.v. extra `pushUserDataToCloud()` (background.js heeft die push al gedaan vóór de broadcast). Cache → v10. |
 | 0.5.4   | 2026-05-23  | Cache-busting via `?v=` query string op `app.js`/`style.css` in index.html zodat browsers gegarandeerd nieuwe code laden. SW gebruikt nu `skipWaiting` op message, en app.js doet `controllerchange`-triggered auto-reload. Build info-strip robuuster (paars/hard zichtbaar, toont altijd iets ook bij fouten). Cache → v9. |
 | 0.5.3   | 2026-05-23  | Build info-strip (linksonder) toont app-versie, omgeving (EXT/PWA), SW-cache versie en laatste 6 chars van binId — zodat PC en telefoon visueel verifieerbaar dezelfde bin gebruiken. Service worker beantwoordt nu `GET_SW_VERSION` postMessage. Cache → v8. |
