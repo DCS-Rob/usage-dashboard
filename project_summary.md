@@ -43,11 +43,14 @@ sequenceDiagram
 
 Direct scraping from a mobile browser is technically impossible due to **CORS browser restrictions**, **Cloudflare bot protection** on AI sites, and cookie boundaries. Therefore, the phone relies on the PC to scrape. 
 
-To allow the phone to trigger a scrape when Rob is away from his desk (but Chrome is open on his PC), a **Remote Control Sync** was recently added:
-* **The Phone Trigger (`requestRemoteRefresh()`)**: When the user clicks "Refresh" on the phone, the PWA fetches the latest cloud bin state, adds `refreshRequested: true` and `refreshRequestedAt: Date.now()`, re-encrypts, and `POST`s it back to `npoint.io`.
-* **The Phone Fast Poll (`startFastPollingForRemoteSync()`)**: The phone enters a fast poll loop (fetching the bin every 2.5s for 20s) waiting for `refreshRequested` to become `false`.
-* **The PC Polling Listener (`checkForRemoteRefreshRequest()`)**: When open, the PC dashboard page polls `npoint.io` every 15s. If it sees `refreshRequested === true` and the request is less than 2 minutes old, it triggers `triggerSyncNow("claude")` and `triggerSyncNow("chatgpt")` automatically on the PC browser.
-* **Reset & Update**: Once the PC scrapers finish scraping, the PC uploads the fresh data to npoint.io, resetting `refreshRequested: false`. The phone detects this reset during fast-polling, stops polling, and updates the screen with live data.
+To allow the phone to trigger a scrape when the user is away from their desk (but Chrome is open on the PC), a **Remote Control Sync** is implemented via two parallel mechanisms:
+
+* **The Phone Trigger (`requestRemoteRefresh()`)**: When the user clicks "Refresh" on the phone, the PWA first loads the latest cloud data (to capture a baseline `syncStatus.lastSynced` timestamp), then adds `refreshRequested: true` and `refreshRequestedAt: Date.now()`, re-encrypts, and `POST`s it back to `npoint.io`. A verification step 800ms later reads the bin back to confirm the flag landed — shows a yellow toast if not confirmed.
+* **The Phone Fast Poll (`startFastPollingForRemoteSync(baseline)`)**: The phone enters a fast poll loop (every 2.5s, up to 36 attempts = 90s window). Completion requires **both** `flagCleared` (refreshRequested is false/absent) **and** `freshScrape` (cloudLastSynced > baselineLastSynced). This prevents false-positive completion on stale npoint.io CDN cache.
+* **The PC Background Alarm Poller (`checkForRemoteRefreshRequestBG()` in `background.js`)**: The primary polling mechanism. Runs via `chrome.alarms` every 30 seconds, works even when the dashboard tab is **completely closed**. Throttles to max one trigger per 45s. When `refreshRequested === true` and request is < 2 minutes old, calls `triggerScrapeFromBackground(provider)`.
+* **The PC Tab Poller (`checkForRemoteRefreshRequest()` in `app.js`)**: Secondary/fast-path. Runs every 15s when the dashboard tab is open. Complements the background alarm for lower latency when the tab is visible.
+* **Background Scrape (`triggerScrapeFromBackground()`)**: Reloads existing AI tabs with `active: false` (no focus stealing). If no tab exists, opens a temporary background tab (`active: false`), waits 8.5s for scraping to complete, then closes it.
+* **Reset & Update**: Once the PC scrapers finish, `background.js` pushes fresh data to npoint.io with `refreshRequested: false`. The phone detects the new `lastSynced` timestamp during fast-polling, stops polling, and updates the UI with live data.
 
 ---
 
@@ -57,7 +60,8 @@ Here is the exact mapping of all workspace files:
 
 ### 1. `manifest.json`
 * **Type**: Chrome Extension manifest (Manifest V3).
-* **Permissions**: `["storage", "tabs"]` for storing user profiles and scraping/reloading AI browser tabs.
+* **Version**: `0.5.7`
+* **Permissions**: `["storage", "tabs", "alarms"]` — `alarms` is required for `chrome.alarms`-based background polling of the remote refresh flag.
 * **Host Permissions**: Allows network requests and content script injections on `*://*.claude.ai/*`, `*://*.chatgpt.com/*`, `*://gemini.google.com/*`, `https://api.npoint.io/*`, and `https://www.npoint.io/*`. Bypasses CORS.
 * **Action**: Sets default extension action behavior. Clicking the extension icon opens the local dashboard:
   ```javascript
@@ -72,7 +76,9 @@ Here is the exact mapping of all workspace files:
   * Listens for messages from `content.js` content scripts: `SYNC_FROM_TAB` (usage limit pages) and `AUTO_LOG_MESSAGE` (typed chat prompts).
   * Stores user logs, threads, limits, and settings in `chrome.storage.local`.
   * **Log Alignment (`alignRollingLogs`)**: Computes discrepancy between raw scraped tokens/messages and local logs in the current rolling window. Auto-generates proxy correction logs ("Gesynchroniseerde status correctie") to realign UI rings.
-  * **Real-time Cloud Push (`pushUserDataToCloud`)**: Symmetric E2E encryption using `CryptoSync` (XOR cipher with base64). Uploads payload to `https://api.npoint.io/${binId}` via HTTP `POST` immediately when data is logged or synced. Resets `refreshRequested` flags.
+  * **Real-time Cloud Push (`pushUserDataToCloud`)**: Symmetric E2E encryption using `CryptoSync` (XOR cipher with base64). Uploads payload to `https://api.npoint.io/${binId}` via HTTP `POST` immediately when data is logged or synced. Always resets `refreshRequested: false` in the uploaded payload so the phone fast-poll can detect fresh scrape completion.
+  * **Background Remote Polling (`checkForRemoteRefreshRequestBG`)**: Runs every 30s via `chrome.alarms`. Checks `npoint.io` for `refreshRequested === true`, throttles to one trigger per 45s, calls `triggerScrapeFromBackground()`. Works even when the dashboard tab is fully closed.
+  * **Background Scrape (`triggerScrapeFromBackground`)**: Reloads or creates AI tabs with `active: false` so the user's screen never switches away. 8.5s wait for content.js to scrape and report back.
   * **Settings Debug Log (`logSync`)**: Appends status strings to a rotating array `lt_sync_logs` in `chrome.storage.local` for diagnostic display on the Settings tab.
 
 ### 3. `content.js`
@@ -101,11 +107,15 @@ Here is the exact mapping of all workspace files:
     Draws a 130x130 QR code targeting `https://magnificent-pudding-e68600.netlify.app/index.html?key=KEY&bin=BIN_ID` using `api.qrserver.com`.
   * **Remote Scrape Hook (`triggerSyncNow`)**:
     Queries open Claude/ChatGPT tabs matching subdomains `*://*.claude.ai/*` and `*://*.chatgpt.com/*`.
-    * If found: activates the tab (`chrome.tabs.update(id, { active: true })`) and reloads it to trigger `content.js` scraping.
-    * If not found: creates a temporary tab in the foreground (`active: true`), waits 6.5 seconds for it to load and scrape, and then closes it automatically.
-    * *Why active: true?* Chrome throttles background tabs, freezing React hydration and preventing the scraper from executing. Opening/activating them is the only reliable way.
+    * If found: reloads the tab with `active: false` (no focus stealing) to trigger `content.js` scraping.
+    * If not found: creates a temporary tab with `active: false`, waits 8.5 seconds for it to load and scrape, then closes it automatically.
+    * *Note on active: false:* Earlier versions used `active: true` which caused the PC screen to switch to the AI tab mid-conversation. Fixed in v0.5.0. Chrome does not throttle tabs that are being reloaded via the extension, so `active: false` works reliably.
+  * **Service Worker Registration** (PWA only):
+    Calls `reg.update()` at startup and every 5 minutes to force the browser to check for a new SW without waiting for Chrome's internal 24h timer. On `updatefound`, sends `SKIP_WAITING` immediately. On `controllerchange`, reloads the page so the new SW takes effect.
   * **Mobile Read-Only Setup (`applyMobileSyncUI`)**:
-    If `isSyncClient()` is true, replaces user headers, hides edit forms, hides pairing QR setups, and maps refresh buttons to `requestRemoteRefresh()`.
+    If `isSyncClient()` is true, replaces user headers, hides edit forms, hides pairing QR setups, and maps refresh buttons to `requestRemoteRefresh()`. Box index 0 (Cloud Sync Status) gets a custom layout including the **Ververs handmatig** button and the `#build-info-slot` div. Box indices 1+ are hidden. `#build-info-slot` is rendered here so the build info strip is visible on the phone in Settings.
+  * **Build Info Strip (`renderBuildInfoStrip`)**:
+    Writes `v0.5.7 · EXT/PWA · SW:v12 · bin:…XXXXXX` into `#build-info-slot` in the Settings tab. Called at startup and when the Settings tab is opened. Queries the active SW for its cache name via `postMessage({ type: "GET_SW_VERSION" })`. Allows visual verification that PC and phone use the same bin and same SW version.
 
 ### 5. `index.html` & `style.css`
 * **Type**: Frontend View layer.
@@ -113,7 +123,10 @@ Here is the exact mapping of all workspace files:
 
 ### 6. `sw.js` & `manifest.webmanifest`
 * **Type**: Mobile PWA Assets Cache.
-* **Aesthetics**: Static asset list. Stale-while-revalidate fetch strategy, strictly ignoring API requests (`!request.url.startsWith(location.origin)`) so `npoint.io` GETs are never cached locally by the PWA wrapper.
+* **Current version**: `CACHE_NAME = 'usagedashboard-cache-v12'`, `APP_BUILD = '0.5.7'`
+* **ASSETS list**: includes versioned paths (`app.js?v=0.5.7`, `style.css?v=0.5.7`) for cache-busting — the SW will fetch new files when the query string changes.
+* **Fetch strategy**: Stale-while-revalidate. Returns cached response immediately, updates cache from network in background. Strictly ignores non-origin requests so `npoint.io` GETs are never cached locally.
+* **Message handlers**: Responds to `GET_SW_VERSION` (returns `cacheName` + `build` to the page via MessageChannel), and `SKIP_WAITING` (activates new SW immediately without waiting for old tabs to close).
 
 ---
 
@@ -142,23 +155,34 @@ Here is the exact mapping of all workspace files:
 
 ---
 
-## 5. Step-by-Step Guide for Continuing in Codex
+## 5. Huidige staat & handoff-notities
 
-When taking over this project in Codex, proceed with these exact debugging steps:
+Het systeem werkt volledig en is stabiel per v0.5.7. Onderstaande notities zijn bedoeld als context voor een volgende AI-sessie die het project overneemt.
 
-### 1. Identify Why the Remote Trigger Fails
-The user reports: *"Nee werkt nog altijd niet"* (No, it still doesn't work when refreshing from the phone). 
-To diagnose this, run these checks:
-1. **Is the PC Extension Reloaded?**
-   * Chrome caches extension service workers aggressively. If Rob has not opened `chrome://extensions`, turned on Developer mode, and clicked the circular **Reload** icon on the "Usage Dashboard" card, his PC is still running the old `background.js`/`app.js` without the remote trigger listener!
-2. **Is the PC Tab Open and active?**
-   * The polling listener `initRemoteRefreshListener()` in `app.js` runs every 15s when `state.currentUser` is loaded. This requires the dashboard tab (`chrome-extension://.../index.html`) to be open in Chrome on the PC. If Chrome has discarded/suspended the dashboard tab, the interval stops running.
-   * *Future improvement for Codex:* Move `checkForRemoteRefreshRequest()` into `background.js` using `chrome.alarms` to poll `npoint.io` even if the dashboard tab is completely closed!
-3. **Verify the Debug Logbook (`lt_sync_logs`)**:
-   * Open the "Settings" tab on the PC dashboard. Check the **Synchronisatie Logboek (Debug)** textbox.
-   * If the phone successfully triggered a refresh, you should see:
-     `[14:50:22] [Cloud Remote] Afstandsbediening verzoek gedetecteerd vanaf uw telefoon! Scrapers starten...`
-   * If you see error traces, CORS blocks, or decryption failures, copy the error to guide your fixes.
+### Hoe remote refresh nu werkt (volledig geïmplementeerd)
+1. Telefoon POST → npoint.io met `refreshRequested: true`
+2. `background.js` alarm (elke 30s) detecteert de vlag — werkt ook zonder open dashboardtab
+3. Scrapers draaien op de achtergrond (`active: false`, geen schermwissel)
+4. Background.js pushed verse data + `refreshRequested: false` naar npoint.io
+5. Telefoon fast-poll (2.5s interval, max 90s) detecteert nieuwere `lastSynced` timestamp → UI update
+
+### Diagnostiek via het logboek
+Als remote sync stokt, open **Settings** op de PC-extensie en kijk in **Synchronisatie Logboek (Debug)**:
+* Succesvolle trigger: `[Cloud Remote BG] Telefoon vroeg om refresh — scrapers worden op achtergrond gestart`
+* Scrape voltooid: `[BG Scrape] claude tab geladen, wacht op scrape...` → `[BG] Staat van extensie cloud gepusht`
+* Geen trigger zichtbaar? Check of de extensie is herladen na de laatste update (`chrome://extensions` → Reload)
+
+### Telefoon toont oude data?
+1. Sluit de PWA volledig af en open opnieuw → SW update wordt afgedwongen via `reg.update()`
+2. Ga naar **Settings** op de telefoon → controleer `v0.5.7 · PWA · SW:v12 · bin:…XXXXXX`
+3. Als SW-versie lager is: wacht ~30s, de `controllerchange` event herlaadt automatisch
+
+### Netlify deploy (GitHub → auto-deploy)
+* Repo: **https://github.com/DCS-Rob/usage-dashboard** (publiek)
+* Netlify site: `magnificent-pudding-e68600.netlify.app`
+* Deploy trigger: elke `git push` naar `main` → automatische Netlify build (~15 credits)
+* Alleen PWA-bestanden via Netlify: `app.js`, `index.html`, `style.css`, `sw.js`, `manifest.webmanifest`, `assets/*`
+* Extensie-bestanden (`background.js`, `content.js`, `manifest.json`) gaan **niet** via Netlify — reload via `chrome://extensions`
 
 ---
 
@@ -176,9 +200,11 @@ Iedere production deploy op Netlify kost ~**15 credits** ongeacht of het via dra
 
 ### Deploy-methoden (geen kostenverschil, wel workflow-verschil)
 
-1. **Drag-and-drop** (huidig): Netlify dashboard → site → Deploys-tab → folder selecteren. Foutgevoelig (bestand vergeten = stuk).
-2. **Netlify CLI**: één commando `netlify deploy --prod --dir=.`. Geen geheugenwerk over welke bestanden, maar Node + login vereist.
-3. **Git-gekoppeld (GitHub)**: `git push` → automatische deploy. Geeft bovendien versiegeschiedenis en eenvoudige rollback. Zelfde credits per deploy.
+1. **Git-gekoppeld (GitHub)** ✅ **(huidig, aanbevolen)**: `git push` → automatische Netlify deploy. Versiegeschiedenis + rollback ingebouwd. Repo is publiek zodat Netlify de contributor-check bypast.
+2. **Netlify CLI**: één commando `netlify deploy --prod --dir=.`. Vereist `netlify login` (browser-flow). Handig als fallback als GitHub-integratie hapert.
+3. **Drag-and-drop**: Netlify dashboard → site → Deploys-tab → folder selecteren. Foutgevoelig (bestand vergeten = stuk). Alleen als noodoplossing.
+
+> **Let op**: deploys van commits door een niet-geverifieerde GitHub contributor falen op private Netlify-repos. De repo is daarom op **public** gezet (2026-05-23). Broncode is openbaar zichtbaar; alle gevoelige data (pairing keys, cloud data) loopt via npoint.io en is E2E versleuteld.
 
 ### Delen met anderen — twee verschillende scenario's
 
@@ -207,22 +233,28 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 
 | Versie  | Datum       | Wijziging |
 |---------|-------------|-----------|
-| 0.5.6   | 2026-05-23  | Build info-strip verplaatst van floating overlay naar inline `#build-info-slot` binnen Settings-tab (alleen zichtbaar als gebruiker bewust naar Settings gaat). PWA forceert nu actief SW-update via `reg.update()` bij start + iedere 5 min, zodat nieuwe service workers niet uren wachten op Chrome's eigen update-timer. Cache → v11. |
-| 0.5.5   | 2026-05-23  | Opruimen na geslaagde remote-sync: diagnostische `[Remote Poll DBG]` / `[Remote Poll BG DBG]` logs verwijderd (alleen detection-events worden nog gelogd). Dubbele cloud-push geëlimineerd: `STATE_UPDATED`-handler in app.js doet alleen nog UI-refresh i.p.v. extra `pushUserDataToCloud()` (background.js heeft die push al gedaan vóór de broadcast). Cache → v10. |
-| 0.5.4   | 2026-05-23  | Cache-busting via `?v=` query string op `app.js`/`style.css` in index.html zodat browsers gegarandeerd nieuwe code laden. SW gebruikt nu `skipWaiting` op message, en app.js doet `controllerchange`-triggered auto-reload. Build info-strip robuuster (paars/hard zichtbaar, toont altijd iets ook bij fouten). Cache → v9. |
-| 0.5.3   | 2026-05-23  | Build info-strip (linksonder) toont app-versie, omgeving (EXT/PWA), SW-cache versie en laatste 6 chars van binId — zodat PC en telefoon visueel verifieerbaar dezelfde bin gebruiken. Service worker beantwoordt nu `GET_SW_VERSION` postMessage. Cache → v8. |
-| 0.5.2   | 2026-05-23  | Diagnostische logSync bij iedere remote-poll (zowel app.js als background.js); versiebeheer-protocol toegevoegd aan project_summary. |
-| 0.5.1   | 2026-05-23  | Fast-poll completion vereist nu nieuwere `syncStatus.lastSynced` timestamp dan baseline — voorkomt vroegtijdige "klaar"-melding op stale npoint-cache. Versienummer geïntroduceerd. |
-| 0.5.0   | 2026-05-23  | Telefoon-refresh trekt direct cloud-state binnen + parallel remote-trigger; PC scrape weer stil op achtergrond (`active:false`); `chrome.alarms`-poller in service worker zodat afstandsbediening ook werkt zonder geopende dashboardtab. |
-| 1.0 → 0.5.0 | 2026-05-23 | Versie teruggezet naar realistische 0.5.x range (project nog in actieve debug-fase). |
+| 0.5.7   | 2026-05-23  | `#build-info-slot` toegevoegd aan mobiele Settings-view (`applyMobileSyncUI` box[0]), zodat build info ook zichtbaar is op de telefoon (was verborgen omdat de debug-logbox op mobiel `display:none` werd). Cache → v12. |
+| 0.5.6   | 2026-05-23  | Build info-strip verplaatst van floating overlay naar inline `#build-info-slot` binnen Settings-tab. PWA forceert actieve SW-update via `reg.update()` bij start + iedere 5 min; `controllerchange` → auto-reload. Cache → v11. |
+| 0.5.5   | 2026-05-23  | Opruimen logboek: diagnostische `[DBG]` logs verwijderd. Dubbele cloud-push geëlimineerd (`STATE_UPDATED`-handler doet geen extra `pushUserDataToCloud()` meer). Cache → v10. |
+| 0.5.4   | 2026-05-23  | Cache-busting via `?v=` query strings op `app.js`/`style.css`. SW reageert op `SKIP_WAITING` message; `controllerchange` → auto-reload. GitHub-repo aangemaakt (`DCS-Rob/usage-dashboard`), Netlify gekoppeld via Git. Cache → v9. |
+| 0.5.3   | 2026-05-23  | Build info-strip introduceert: toont `v · EXT/PWA · SW:vX · bin:…XXXXXX` linksonder. SW beantwoordt `GET_SW_VERSION` postMessage. Cache → v8. |
+| 0.5.2   | 2026-05-23  | Diagnostische logSync bij iedere remote-poll (app.js + background.js); versiebeheer-protocol toegevoegd aan project_summary. |
+| 0.5.1   | 2026-05-23  | Fast-poll completion vereist nieuwere `lastSynced` timestamp dan baseline — voorkomt false-positive op stale npoint-cache. |
+| 0.5.0   | 2026-05-23  | Telefoon-refresh laadt eerst cloud-state (baseline), dan remote-trigger; PC scrape stil op achtergrond (`active:false`); `chrome.alarms`-poller in background.js zodat remote-trigger werkt zonder open dashboardtab. |
+| 1.0 → 0.5.0 | 2026-05-23 | Versie teruggezet naar realistische 0.5.x range (project in actieve ontwikkelfase). |
 
 ---
 
 ## 6. Completed Work Checklist (Done & Verified)
 
 - `[x]` **Subdomain Match Fix**: Corrected `chrome.tabs.query` pattern to `*://*.claude.ai/*` and `*://*.chatgpt.com/*` so subdomains (like `www.`) are matched.
-- `[x]` **Chrome Throttling Bypass**: Configured `active: true` in `chrome.tabs.create` and `chrome.tabs.update` to prevent Chrome from putting scraper tabs to sleep.
+- `[x]` **No Screen Switching During Sync**: Changed `active: true` → `active: false` in `triggerSyncNow` and `triggerScrapeFromBackground`. PC screen no longer switches to AI tabs during background scrapes.
 - `[x]` **Cookie Storage Fallback**: Implemented `CookieStorage` fallbacks in `app.js` to preserve pairing keys when iOS Safari aggressively purges local storage.
-- `[x]` **PWA Null Pointer Protection**: Added solid null-checks in `updateScraperStatusLabels` to prevent PWA interface crashes when status elements are hidden.
-- `[x]` **Remote Control Sync Skeleton**: Implemented XOR encrypted triggers (`refreshRequested`) in `app.js` and `background.js` to allow remote PC scrape triggers.
-- `[x]` **Service Worker Cache Bumps**: Bumped `sw.js` cache to `v4` to force mobile client updates.
+- `[x]` **PWA Null Pointer Protection**: Added null-checks in `updateScraperStatusLabels` to prevent PWA interface crashes when status elements are hidden.
+- `[x]` **Remote Control Sync (volledig)**: Phone refresh triggers background scrape on PC via npoint.io flag. Works when dashboard tab is closed via `chrome.alarms`. Fast-poll uses baseline timestamp to prevent false-positive completion on stale CDN cache.
+- `[x]` **No Duplicate Cloud Uploads**: Removed `pushUserDataToCloud()` from `STATE_UPDATED` handler — background.js already pushes before broadcasting.
+- `[x]` **Build Info Strip**: Shows `v · EXT/PWA · SW:vX · bin:…XXXXXX` in Settings tab on both PC extension and phone PWA. Queries active SW for cache name via `GET_SW_VERSION` postMessage.
+- `[x]` **Forced SW Updates**: `reg.update()` at startup + every 5 min. `SKIP_WAITING` on new SW install. `controllerchange` → auto page reload. Phone no longer stuck on old SW for up to 24h.
+- `[x]` **Cache Busting**: `app.js?v=X.X.X` and `style.css?v=X.X.X` query strings in `index.html` and SW ASSETS list ensure fresh files are fetched on version bump.
+- `[x]` **GitHub + Netlify Auto-Deploy Pipeline**: `git push` → auto Netlify deploy. Repo is public (`DCS-Rob/usage-dashboard`) to bypass Netlify's verified-contributor restriction on private repos.
+- `[x]` **Version Protocol**: Every change bumps `manifest.json` version + `sw.js` CACHE_NAME + version history table in `project_summary.md`.
