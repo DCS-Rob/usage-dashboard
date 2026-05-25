@@ -233,6 +233,7 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 
 | Versie  | Datum       | Wijziging |
 |---------|-------------|-----------|
+| 0.6.1   | 2026-05-25  | Netlify auto-deploy gestopt via `netlify.toml` (ignore = "exit 1"). Netlify-statuspaneel toegevoegd in Settings: toont sync-status (lokaal vs Netlify), deploy-knop met credits-waarschuwing + build hook URL invoer. agents-controller auto-sync via systemd timer (elke 5 min git pull). Cache → v16. |
 | 0.6.0   | 2026-05-25  | Host-selector toegevoegd in Mobiele Synchronisatie: keuze tussen Lokaal (agents-controller via Tailscale) en Netlify. QR-code en koppellink hergenereert direct bij wisselen. Keuze opgeslagen in `lt_sync_config.pwaHost`. Cache → v15. |
 | 0.5.9   | 2026-05-25  | PWA verhuisd van Netlify naar agents-controller (`https://agents-controller.tail00aec2.ts.net:9000`). Node.js static server + systemd service + Tailscale Serve HTTPS. Deploy via `update.sh` (git pull + service restart). Cache → v14. |
 | 0.5.8   | 2026-05-25  | Claude wekelijkse tijdsbalk grijs (0%) gerepareerd: `resetWeekly`-string "Resets in X hr Y min Z" werd niet geparsed voor de balk-percentage. Fix: "Resets in" prefix strippen + tijdcomponenten parsen → `claudeWeeklyTimePct` correct berekend. Cache → v13. |

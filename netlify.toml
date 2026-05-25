@@ -1,0 +1,9 @@
+# Netlify configuratie
+# Auto-deploy is uitgeschakeld — de PWA draait lokaal op agents-controller.
+# Gebruik de "Deploy naar Netlify" knop in de extensie Settings om handmatig
+# te deployen wanneer Netlify als publieke fallback nodig is (~15 credits per deploy).
+
+[build]
+  # ignore = "exit 1" zorgt dat Netlify elke automatische deploy overslaat.
+  # Handmatige deploys (via build hook) worden niet geblokkeerd door deze instelling.
+  ignore = "exit 1"

@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Beautiful Analytics Charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.6.0">
+    <link rel="stylesheet" href="style.css?v=0.6.1">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -593,6 +593,43 @@
                             </div>
                         </div>
 
+                        <!-- NETLIFY STATUS PANEL (alleen extensie) -->
+                        <div class="glass-panel" id="settings-netlify-panel">
+                            <h3><i class="fa-brands fa-netlify" style="color:#00ad9f;"></i> Netlify Status <span style="font-size:0.7rem; font-weight:400; color:var(--text-muted); margin-left:6px;">(publieke fallback)</span></h3>
+                            <p class="section-desc">De PWA draait lokaal op agents-controller. Netlify is de publieke fallback voor wanneer Tailscale niet beschikbaar is.</p>
+
+                            <div class="scraper-status-list mt-3">
+                                <div class="status-item-box">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                        <strong>Sync status:</strong>
+                                        <span id="netlify-sync-badge" class="badge">Controleren...</span>
+                                    </div>
+                                    <div id="netlify-version-info" style="font-size:0.78rem; color:var(--text-muted); margin-bottom:10px;">Versie ophalen...</div>
+
+                                    <!-- Deploy knop — alleen zichtbaar als out-of-sync -->
+                                    <div id="netlify-deploy-section" style="display:none;">
+                                        <div style="background:rgba(255,180,0,0.08); border:1px solid rgba(255,180,0,0.25); border-radius:6px; padding:10px 12px; margin-bottom:10px; font-size:0.78rem;">
+                                            <i class="fa-solid fa-triangle-exclamation" style="color:#f6ad55;"></i>
+                                            <strong style="color:#f6ad55;"> Let op:</strong> Een Netlify deploy kost <strong>~15 credits</strong>.
+                                            Bekijk je saldo op <a href="https://app.netlify.com/billing" target="_blank" style="color:var(--color-gemini);">netlify.com/billing</a> voordat je deployt.
+                                        </div>
+                                        <div class="form-group mb-2">
+                                            <label style="font-size:0.72rem; color:var(--text-muted);">Netlify Build Hook URL <span style="opacity:0.6;">(eenmalig instellen)</span>:</label>
+                                            <div style="display:flex; gap:6px;">
+                                                <input type="text" id="netlify-hook-url" placeholder="https://api.netlify.com/build_hooks/..." style="font-size:0.78rem; flex:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:5px; color:#fff; padding:6px 10px;">
+                                                <button type="button" id="btn-save-hook" class="btn-secondary" style="padding:0 10px; font-size:0.75rem; white-space:nowrap;">Opslaan</button>
+                                            </div>
+                                            <p class="desc mt-1" style="font-size:0.7rem;">Netlify dashboard → Site → <em>Build hooks</em> → nieuwe hook aanmaken → URL hier plakken.</p>
+                                        </div>
+                                        <button type="button" id="btn-deploy-netlify" class="btn-primary w-100" style="font-size:0.82rem;">
+                                            <i class="fa-brands fa-netlify"></i> Deploy naar Netlify (~15 credits)
+                                        </button>
+                                        <div id="netlify-deploy-result" style="margin-top:8px; font-size:0.75rem; display:none;"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- MOBILE SYNC PANEL -->
                         <div class="glass-panel" id="settings-mobile-sync-panel">
                             <h3><i class="fa-solid fa-mobile-screen-button"></i> Mobiele Synchronisatie (PWA)</h3>
@@ -695,6 +732,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.6.0"></script>
+    <script src="app.js?v=0.6.1"></script>
 </body>
 </html>
