@@ -70,7 +70,7 @@
                 <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">Of koppel handmatig als mobiele client:</p>
                 <div class="form-group" style="margin-bottom: 12px; text-align: left;">
                     <label for="pairing-input-url" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-link"></i> Koppelings-URL</label>
-                    <input type="text" id="pairing-input-url" placeholder="Plak hier de volledige koppel-URL van uw pc (met key en bin)" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 10px 12px; box-sizing: border-box; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--color-gemini)'" onblur="this.style.borderColor='rgba(255,255,255,0.08)'">
+                    <input type="text" id="pairing-input-url" placeholder="Plak hier de volledige koppel-URL van uw pc (met key en bin)" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 10px 12px; box-sizing: border-box; transition: border-color 0.2s;">
                 </div>
                 <button type="button" id="btn-submit-pairing-url" class="btn-secondary w-100" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
                     <i class="fa-solid fa-link"></i> Koppelen & Activeren
@@ -102,8 +102,8 @@
                     <button class="nav-tab active" data-tab="tab-dashboard">Dashboard</button>
                     <button class="nav-tab" data-tab="tab-analytics">Analyze</button>
                     <button class="nav-tab" data-tab="tab-settings">Settings</button>
-                    <button class="nav-tab placeholder-tab" onclick="alert('Rapporten zijn binnenkort beschikbaar!')">Reports</button>
-                    <button class="nav-tab placeholder-tab" onclick="alert('Help & Support is binnenkort beschikbaar!')">Help</button>
+                    <button class="nav-tab placeholder-tab" id="btn-tab-reports">Reports</button>
+                    <button class="nav-tab placeholder-tab" id="btn-tab-help">Help</button>
                 </nav>
 
                 <!-- Header Actions (Sync & Profile) -->

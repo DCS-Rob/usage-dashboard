@@ -1594,6 +1594,23 @@ function setupEventListeners() {
             });
         });
     }
+
+    // Placeholder tabs (MV3 CSP staat geen inline onclick toe)
+    const btnReports = document.getElementById("btn-tab-reports");
+    if (btnReports) {
+        btnReports.addEventListener("click", () => alert("Rapporten zijn binnenkort beschikbaar!"));
+    }
+    const btnHelp = document.getElementById("btn-tab-help");
+    if (btnHelp) {
+        btnHelp.addEventListener("click", () => alert("Help & Support is binnenkort beschikbaar!"));
+    }
+
+    // Koppel-URL input focus styling (MV3 CSP staat geen inline onfocus/onblur toe)
+    const pairingInput = document.getElementById("pairing-input-url");
+    if (pairingInput) {
+        pairingInput.addEventListener("focus", () => { pairingInput.style.borderColor = "var(--color-gemini)"; });
+        pairingInput.addEventListener("blur",  () => { pairingInput.style.borderColor = "rgba(255,255,255,0.08)"; });
+    }
 }
 
 function deleteLog(id) {
