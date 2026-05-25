@@ -1,0 +1,52 @@
+name: Create GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lees versie uit tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Lees changelog voor deze versie
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          # Haal de sectie op die begint met ## [X.Y.Z] tot de volgende ##
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Zie commits voor wijzigingen in deze versie."
+          fi
+          # Multiline output veilig doorgeven
+          {
+            echo "NOTES<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Maak GitHub Release aan
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Usage Dashboard v${{ steps.version.outputs.VERSION }}"
+          body: |
+            ## Usage Dashboard v${{ steps.version.outputs.VERSION }}
+
+            ${{ steps.changelog.outputs.NOTES }}
+
+            ---
+            **Installeren / updaten:**
+            - **Extensie (PC):** `chrome://extensions` → Reload knop
+            - **PWA (telefoon):** agents-controller update automatisch binnen 5 minuten
+          draft: false
+          prerelease: false
