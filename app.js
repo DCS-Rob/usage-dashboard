@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.6.1";
+const APP_VERSION = "0.6.2";
 const NETLIFY_URL = "https://magnificent-pudding-e68600.netlify.app";
 
 // ============================================================
@@ -405,12 +405,27 @@ function initApp() {
         return;
     }
 
-    DB.get(["lt_current_user"], (res) => {
+    DB.get(["lt_current_user", "lt_remembered_login"], (res) => {
         if (res.lt_current_user) {
             state.currentUser = res.lt_current_user;
             showView("dashboard");
             loadUserData(() => {
                 initRemoteRefreshListener();
+            });
+        } else if (res.lt_remembered_login) {
+            // Auto-login met opgeslagen credentials
+            const { username, passHash } = res.lt_remembered_login;
+            DB.get(["lt_users"], (r2) => {
+                const users = r2.lt_users || {};
+                if (users[username] && users[username].passHash === passHash) {
+                    state.currentUser = username;
+                    DB.set({ lt_current_user: username }, () => {
+                        showView("dashboard");
+                        loadUserData(() => { initRemoteRefreshListener(); });
+                    });
+                } else {
+                    showView("login");
+                }
             });
         } else {
             showView("login");
@@ -1350,7 +1365,12 @@ function setupEventListeners() {
             
             if (users[username] && users[username].passHash === passHash) {
                 state.currentUser = username;
-                DB.set({ lt_current_user: username }, () => {
+                const rememberMe = document.getElementById("chk-remember-me");
+                const toSave = { lt_current_user: username };
+                if (rememberMe && rememberMe.checked) {
+                    toSave.lt_remembered_login = { username, passHash };
+                }
+                DB.set(toSave, () => {
                     showView("dashboard");
                     loadUserData();
                 });
@@ -1413,7 +1433,7 @@ function setupEventListeners() {
     }
 
     document.getElementById("btn-logout").addEventListener("click", () => {
-        DB.set({ lt_current_user: null }, () => {
+        DB.set({ lt_current_user: null, lt_remembered_login: null }, () => {
             state.currentUser = null;
             state.userLogs = [];
             state.userThreads = [];
