@@ -233,6 +233,7 @@ Elke functionele wijziging in `app.js`, `background.js`, `content.js`, `manifest
 
 | Versie  | Datum       | Wijziging |
 |---------|-------------|-----------|
+| 0.5.8   | 2026-05-25  | Claude wekelijkse tijdsbalk grijs (0%) gerepareerd: `resetWeekly`-string "Resets in X hr Y min Z" werd niet geparsed voor de balk-percentage. Fix: "Resets in" prefix strippen + tijdcomponenten parsen → `claudeWeeklyTimePct` correct berekend. Cache → v13. |
 | 0.5.7   | 2026-05-23  | `#build-info-slot` toegevoegd aan mobiele Settings-view (`applyMobileSyncUI` box[0]), zodat build info ook zichtbaar is op de telefoon (was verborgen omdat de debug-logbox op mobiel `display:none` werd). Cache → v12. |
 | 0.5.6   | 2026-05-23  | Build info-strip verplaatst van floating overlay naar inline `#build-info-slot` binnen Settings-tab. PWA forceert actieve SW-update via `reg.update()` bij start + iedere 5 min; `controllerchange` → auto-reload. Cache → v11. |
 | 0.5.5   | 2026-05-23  | Opruimen logboek: diagnostische `[DBG]` logs verwijderd. Dubbele cloud-push geëlimineerd (`STATE_UPDATED`-handler doet geen extra `pushUserDataToCloud()` meer). Cache → v10. |

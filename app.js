@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.7";
+const APP_VERSION = "0.5.8";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -599,8 +599,22 @@ function renderDashboardProgress() {
                     claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
                 }
             } else {
-                // If it's already a clean string like "Reset 2d 5u", strip "Reset " prefix if present
-                claudeWeeklyTimerText = resetWeekly.replace(/^reset\s+in\s+/i, "").replace(/^reset\s+/i, "");
+                // Strip "Resets in" / "Reset in" / "Reset" prefix
+                claudeWeeklyTimerText = resetWeekly.replace(/^resets?\s+in\s+/i, "").replace(/^resets?\s+/i, "");
+                // Parse remaining time to calculate bar percentage
+                // Handles formats like "20 hr 47 min 33", "2d 5u 12m", "1 day 3 hours"
+                const tm = claudeWeeklyTimerText.match(/(?:(\d+)\s*d(?:ay)?s?)?\s*(?:(\d+)\s*h(?:r|r?s|ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?\s*(?:(\d+)\s*s(?:ec(?:onds?)?)?)?/i);
+                if (tm) {
+                    const diffMs = (
+                        (parseInt(tm[1] || 0) * 86400) +
+                        (parseInt(tm[2] || 0) * 3600) +
+                        (parseInt(tm[3] || 0) * 60) +
+                        (parseInt(tm[4] || 0))
+                    ) * 1000;
+                    if (diffMs > 0) {
+                        claudeWeeklyTimePct = (diffMs / (7 * 24 * 60 * 60 * 1000)) * 100;
+                    }
+                }
             }
         }
     } else {
