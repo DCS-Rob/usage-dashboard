@@ -3,113 +3,6 @@
    ========================================================================== */
 
 const APP_VERSION = "0.6.2";
-const NETLIFY_URL = "https://magnificent-pudding-e68600.netlify.app";
-
-// ============================================================
-// NETLIFY SYNC CHECK & DEPLOY
-// ============================================================
-function checkNetlifySync() {
-    const badge = document.getElementById("netlify-sync-badge");
-    const info = document.getElementById("netlify-version-info");
-    const deploySection = document.getElementById("netlify-deploy-section");
-    const hookInput = document.getElementById("netlify-hook-url");
-    const saveBtn = document.getElementById("btn-save-hook");
-    const deployBtn = document.getElementById("btn-deploy-netlify");
-    const deployResult = document.getElementById("netlify-deploy-result");
-    if (!badge) return;
-
-    // Laad opgeslagen hook URL
-    DB.get(["lt_netlify_hook"], (res) => {
-        if (res.lt_netlify_hook && hookInput) hookInput.value = res.lt_netlify_hook;
-    });
-
-    // Hook URL opslaan
-    if (saveBtn) {
-        saveBtn.onclick = () => {
-            const url = hookInput ? hookInput.value.trim() : "";
-            if (url) {
-                DB.set({ lt_netlify_hook: url }, () => showToast('<i class="fa-solid fa-check"></i> Build hook opgeslagen'));
-            }
-        };
-    }
-
-    // Haal Netlify versie op en vergelijk
-    badge.textContent = "Controleren...";
-    badge.className = "badge";
-    info.textContent = "Versie ophalen...";
-    deploySection.style.display = "none";
-
-    fetch(`${NETLIFY_URL}/sw.js?nocache=${Date.now()}`, { cache: "no-store" })
-        .then(r => r.text())
-        .then(text => {
-            const match = text.match(/APP_BUILD\s*=\s*['"]([^'"]+)['"]/);
-            const netlifyVersion = match ? match[1] : "onbekend";
-            const inSync = netlifyVersion === APP_VERSION;
-
-            if (inSync) {
-                badge.className = "badge badge-success";
-                badge.innerHTML = '<i class="fa-solid fa-check"></i> In sync';
-                info.textContent = `Netlify draait v${netlifyVersion} — zelfde als lokaal.`;
-                deploySection.style.display = "none";
-            } else {
-                badge.className = "badge badge-warning";
-                badge.style.background = "rgba(246,173,85,0.2)";
-                badge.style.color = "#f6ad55";
-                badge.style.border = "1px solid rgba(246,173,85,0.4)";
-                badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Out of sync';
-                info.innerHTML = `Netlify: <strong>v${netlifyVersion}</strong> &nbsp;·&nbsp; Lokaal: <strong>v${APP_VERSION}</strong>`;
-                deploySection.style.display = "block";
-            }
-
-            // Deploy knop handler
-            if (deployBtn) {
-                deployBtn.onclick = () => {
-                    DB.get(["lt_netlify_hook"], (res) => {
-                        const hookUrl = res.lt_netlify_hook || (hookInput ? hookInput.value.trim() : "");
-                        if (!hookUrl || !hookUrl.startsWith("https://api.netlify.com/build_hooks/")) {
-                            deployResult.style.display = "block";
-                            deployResult.style.color = "#fc8181";
-                            deployResult.innerHTML = '<i class="fa-solid fa-xmark"></i> Geen geldige build hook URL. Stel deze eerst in hierboven.';
-                            return;
-                        }
-                        if (!confirm(`Deploy naar Netlify?\n\nDit kost ~15 credits van je Netlify saldo.\n\nWil je doorgaan?`)) return;
-
-                        deployBtn.disabled = true;
-                        deployBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Deployen...';
-                        deployResult.style.display = "none";
-
-                        fetch(hookUrl, { method: "POST" })
-                            .then(r => {
-                                deployBtn.disabled = false;
-                                deployBtn.innerHTML = '<i class="fa-brands fa-netlify"></i> Deploy naar Netlify (~15 credits)';
-                                if (r.ok) {
-                                    deployResult.style.display = "block";
-                                    deployResult.style.color = "#68d391";
-                                    deployResult.innerHTML = '<i class="fa-solid fa-check"></i> Deploy gestart! Netlify bouwt nu (~1 min). Ververs daarna deze status.';
-                                    setTimeout(() => checkNetlifySync(), 90000); // hercheck na 90s
-                                } else {
-                                    deployResult.style.display = "block";
-                                    deployResult.style.color = "#fc8181";
-                                    deployResult.innerHTML = `<i class="fa-solid fa-xmark"></i> Deploy mislukt (${r.status}). Controleer de hook URL.`;
-                                }
-                            })
-                            .catch(() => {
-                                deployBtn.disabled = false;
-                                deployBtn.innerHTML = '<i class="fa-brands fa-netlify"></i> Deploy naar Netlify (~15 credits)';
-                                deployResult.style.display = "block";
-                                deployResult.style.color = "#fc8181";
-                                deployResult.innerHTML = '<i class="fa-solid fa-xmark"></i> Netwerkfout — controleer je verbinding.';
-                            });
-                    });
-                };
-            }
-        })
-        .catch(() => {
-            badge.className = "badge";
-            badge.textContent = "Niet bereikbaar";
-            info.textContent = "Netlify kon niet worden bereikt.";
-        });
-}
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -1333,10 +1226,9 @@ function setupEventListeners() {
             tab.classList.add("active");
             pane.classList.add("active");
 
-            // Build info + Netlify status verversen wanneer Settings open gaat
+            // Build info verversen wanneer Settings open gaat
             if (paneId === "tab-settings") {
                 renderBuildInfoStrip();
-                if (DB.isExtension) checkNetlifySync();
             }
         });
     });
@@ -2373,33 +2265,13 @@ function renderMobileSyncSettings() {
 
             pairingKeyInput.value = config.pairingKey;
 
-            // Stel de opgeslagen host-keuze in (default: agents-controller)
-            const savedHost = config.pwaHost || "https://agents-controller.tail00aec2.ts.net:9000";
-            const hostRadios = document.querySelectorAll('input[name="pwa-host"]');
-            hostRadios.forEach(r => { r.checked = (r.value === savedHost); });
-
-            // Genereer QR + link op basis van geselecteerde host
-            function updatePwaLink(hostUrl) {
-                const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
-                pwaLink.href = fullPwaUrl;
-                const hostLabel = hostUrl.includes("netlify") ? "magnificent-pudding-e68600.netlify.app" : "agents-controller.tail00aec2.ts.net:9000";
-                pwaLink.innerHTML = `${hostLabel} <i class="fa-solid fa-up-right-from-square"></i>`;
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
-                document.getElementById("sync-qrcode").innerHTML = `<img src="${qrUrl}" alt="QR Code" style="display: block; width: 130px; height: 130px;">`;
-            }
-
-            updatePwaLink(savedHost);
-
-            // Luister naar host-wijziging → sla op + update QR
-            hostRadios.forEach(r => {
-                r.onchange = () => {
-                    DB.get(["lt_sync_config"], (res2) => {
-                        const cfg2 = res2.lt_sync_config || {};
-                        cfg2.pwaHost = r.value;
-                        DB.set({ lt_sync_config: cfg2 }, () => updatePwaLink(r.value));
-                    });
-                };
-            });
+            // Vaste host: agents-controller (Tailscale)
+            const hostUrl = "https://agents-controller.tail00aec2.ts.net:9000";
+            const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
+            pwaLink.href = fullPwaUrl;
+            pwaLink.innerHTML = `agents-controller.tail00aec2.ts.net:9000 <i class="fa-solid fa-up-right-from-square"></i>`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
+            document.getElementById("sync-qrcode").innerHTML = `<img src="${qrUrl}" alt="QR Code" style="display: block; width: 130px; height: 130px;">`;
         } else {
             connectionStatus.className = "badge";
             connectionStatus.innerText = "Niet Gekoppeld";
@@ -2503,8 +2375,6 @@ function applyMobileSyncUI() {
     
     const mobSyncPanel = document.getElementById("settings-mobile-sync-panel");
     if (mobSyncPanel) mobSyncPanel.style.display = "none";
-    const netlifyPanel = document.getElementById("settings-netlify-panel");
-    if (netlifyPanel) netlifyPanel.style.display = "none";
     
     const usernameEl = document.getElementById("display-username");
     if (usernameEl) usernameEl.innerText = "Mobiel";
