@@ -199,11 +199,10 @@ function alignRollingLogs(user, model, rawUsed) {
 function broadcastStateUpdate() {
     chrome.tabs.query({}, (tabs) => {
         tabs.forEach(tab => {
-            try {
-                chrome.tabs.sendMessage(tab.id, { type: "STATE_UPDATED" });
-            } catch (e) {
-                // Ignore errors for tabs that aren't listening
-            }
+            // sendMessage geeft een Promise terug in MV3 — .catch() is vereist,
+            // try/catch vangt async fouten niet op.
+            chrome.tabs.sendMessage(tab.id, { type: "STATE_UPDATED" })
+                .catch(() => {}); // Negeer — tab luistert niet (geen dashboard tab)
         });
     });
 }

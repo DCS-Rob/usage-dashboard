@@ -15,6 +15,7 @@ const ASSETS = [
   './index.html',
   './style.css?v=0.6.3',
   './app.js?v=0.6.3',
+  './lib/chart.min.js',
   './assets/usage-dashboard-logo.svg',
   './assets/openai-badge.svg',
   './assets/anthropic-ai-badge.svg',
