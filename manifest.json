@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Usage Dashboard - LLM Scraper",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "description": "Monitort en synchroniseert automatisch je Claude Pro en ChatGPT Business usage en rolling limieten.",
   "permissions": [
     "storage",

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.8";
+const APP_VERSION = "0.5.9";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -2244,12 +2244,12 @@ function renderMobileSyncSettings() {
             if (pairingKeyInput.value !== config.pairingKey) {
                 pairingKeyInput.value = config.pairingKey;
                 
-                // PWA Link generation (can point to hosted Netlify/Vercel or custom URL)
-                const defaultPwaUrl = "https://magnificent-pudding-e68600.netlify.app";
+                // PWA Link generation — gehost op agents-controller via Tailscale
+                const defaultPwaUrl = "https://agents-controller.tail00aec2.ts.net:9000";
                 const fullPwaUrl = `${defaultPwaUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
                 
                 pwaLink.href = fullPwaUrl;
-                pwaLink.innerText = `magnificent-pudding-e68600.netlify.app`;
+                pwaLink.innerText = `agents-controller.tail00aec2.ts.net:9000`;
                 
                 // Draw QR Code using free service
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
