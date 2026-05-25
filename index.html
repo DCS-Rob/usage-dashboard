@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Beautiful Analytics Charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.5.9">
+    <link rel="stylesheet" href="style.css?v=0.6.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -622,7 +622,22 @@
                                                 </button>
                                             </div>
                                         </div>
-                                        
+
+                                        <!-- PWA Host Selector -->
+                                        <div class="form-group mb-3">
+                                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-server"></i> PWA Host (koppellink wijst naar):</label>
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.2); font-size: 0.8rem;">
+                                                    <input type="radio" name="pwa-host" id="pwa-host-local" value="https://agents-controller.tail00aec2.ts.net:9000" style="accent-color: var(--color-gemini);">
+                                                    <span><strong>Lokaal</strong> — agents-controller <span style="color: var(--text-muted); font-size: 0.72rem;">(Tailscale vereist op telefoon)</span></span>
+                                                </label>
+                                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08); background: rgba(0,0,0,0.2); font-size: 0.8rem;">
+                                                    <input type="radio" name="pwa-host" id="pwa-host-netlify" value="https://magnificent-pudding-e68600.netlify.app" style="accent-color: var(--color-gemini);">
+                                                    <span><strong>Netlify</strong> — magnificent-pudding-e68600 <span style="color: var(--text-muted); font-size: 0.72rem;">(overal bereikbaar)</span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
                                         <p class="desc mb-2" style="font-size: 0.78rem;"><strong>Hoe te installeren op je mobiel:</strong></p>
                                         <ol class="desc" style="padding-left: 1.25rem; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
                                             <li>Scan de QR-code of klik op de link hieronder op je telefoon.</li>
@@ -639,7 +654,7 @@
                                                 Open Live PWA Web App <i class="fa-solid fa-up-right-from-square"></i>
                                             </a>
                                         </div>
-                                        
+
                                         <button type="button" id="btn-disable-sync" class="btn-danger w-100 mt-3" style="padding: 0.45rem 1rem; font-size: 0.8rem;">
                                             <i class="fa-solid fa-link-slash"></i> Synchronisatie Uitschakelen
                                         </button>
@@ -680,6 +695,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.5.9"></script>
+    <script src="app.js?v=0.6.0"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.5.9";
+const APP_VERSION = "0.6.0";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -2240,21 +2240,36 @@ function renderMobileSyncSettings() {
             connectionStatus.innerHTML = `<i class="fa-solid fa-cloud"></i> Actief`;
             setupActions.style.display = "none";
             activeInfo.style.display = "block";
-            
-            if (pairingKeyInput.value !== config.pairingKey) {
-                pairingKeyInput.value = config.pairingKey;
-                
-                // PWA Link generation — gehost op agents-controller via Tailscale
-                const defaultPwaUrl = "https://agents-controller.tail00aec2.ts.net:9000";
-                const fullPwaUrl = `${defaultPwaUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
-                
+
+            pairingKeyInput.value = config.pairingKey;
+
+            // Stel de opgeslagen host-keuze in (default: agents-controller)
+            const savedHost = config.pwaHost || "https://agents-controller.tail00aec2.ts.net:9000";
+            const hostRadios = document.querySelectorAll('input[name="pwa-host"]');
+            hostRadios.forEach(r => { r.checked = (r.value === savedHost); });
+
+            // Genereer QR + link op basis van geselecteerde host
+            function updatePwaLink(hostUrl) {
+                const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
                 pwaLink.href = fullPwaUrl;
-                pwaLink.innerText = `agents-controller.tail00aec2.ts.net:9000`;
-                
-                // Draw QR Code using free service
+                const hostLabel = hostUrl.includes("netlify") ? "magnificent-pudding-e68600.netlify.app" : "agents-controller.tail00aec2.ts.net:9000";
+                pwaLink.innerHTML = `${hostLabel} <i class="fa-solid fa-up-right-from-square"></i>`;
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
                 document.getElementById("sync-qrcode").innerHTML = `<img src="${qrUrl}" alt="QR Code" style="display: block; width: 130px; height: 130px;">`;
             }
+
+            updatePwaLink(savedHost);
+
+            // Luister naar host-wijziging → sla op + update QR
+            hostRadios.forEach(r => {
+                r.onchange = () => {
+                    DB.get(["lt_sync_config"], (res2) => {
+                        const cfg2 = res2.lt_sync_config || {};
+                        cfg2.pwaHost = r.value;
+                        DB.set({ lt_sync_config: cfg2 }, () => updatePwaLink(r.value));
+                    });
+                };
+            });
         } else {
             connectionStatus.className = "badge";
             connectionStatus.innerText = "Niet Gekoppeld";
