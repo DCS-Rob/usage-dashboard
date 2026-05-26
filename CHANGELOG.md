@@ -4,6 +4,14 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.6.5] — 2026-05-26
+
+### Opgelost
+- Codex/ChatGPT tab bleef in een oneindige reload-lus: `autoSelectPersonalTab()` veranderde de URL-hash → content script detecteerde URL-wijziging → `window.location.reload()` → hash-change → reload → herhaling
+- `window.location.reload()` volledig verwijderd uit de URL-change handler in `content.js` — bij een URL-wijziging naar een analytics-pagina wordt nu gewoon `triggerScrape()` aangeroepen; de MutationObserver handelt dynamisch laden af
+
+---
+
 ## [0.6.4] — 2026-05-26
 
 ### Opgelost

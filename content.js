@@ -198,11 +198,6 @@ function setupSettingsScraper() {
             lastUrl = window.location.href;
             personalTabClicked = false;
             
-            // Forceren van een reload bij navigeren naar usage paginas voor stabielere scraping
-            if (window.location.href.includes("claude.ai/settings/usage") || (window.location.href.includes("chatgpt.com") && window.location.href.includes("analytics"))) {
-                window.location.reload();
-                return;
-            }
             triggerScrape();
         }
 
