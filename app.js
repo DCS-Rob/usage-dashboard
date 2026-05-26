@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.6.5";
+const APP_VERSION = "0.6.6";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -483,8 +483,9 @@ function updateParallelPace(provider, prefix, capPct, timePct) {
 
 function getNextWeeklyResetMs(dayName, timeStr) {
     const days = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, zondag: 0, maandag: 1, dinsdag: 2, woensdag: 3, donderdag: 4, vrijdag: 5, zaterdag: 6 };
-    const lowerDay = dayName.toLowerCase().substring(0, 3);
-    let targetDayNum = days[lowerDay];
+    const lowerDay = dayName.toLowerCase();
+    // Probeer eerst de volledige naam, dan de eerste 3 tekens, anders standaard dinsdag
+    let targetDayNum = days[lowerDay] !== undefined ? days[lowerDay] : (days[lowerDay.substring(0, 3)] !== undefined ? days[lowerDay.substring(0, 3)] : 2);
     if (targetDayNum === undefined) {
         targetDayNum = 2; // Default to Tuesday
     }
@@ -601,23 +602,67 @@ function renderDashboardProgress() {
         
         if (sync.resetWeekly) {
             const resetWeekly = sync.resetWeekly;
-            const match = resetWeekly.match(/(mon|tue|wed|thu|fri|sat|sun|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
-            if (match) {
-                const dayName = match[1];
-                const timeStr = match[2];
-                const resetMs = getNextWeeklyResetMs(dayName, timeStr);
+            const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+            // --- Pad 1: dagnaam-formaat "Tuesday 06:00 AM" of "dinsdag 06:00" ---
+            const dayMatch = resetWeekly.match(/(mon|tue|wed|thu|fri|sat|sun|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
+
+            // --- Pad 2: "tomorrow at HH:MM" of "morgen om HH:MM" ---
+            const tomorrowMatch = resetWeekly.match(/(?:tomorrow|morgen)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+
+            // --- Pad 3: "today at HH:MM" of "vandaag om HH:MM" ---
+            const todayMatch = resetWeekly.match(/(?:today|vandaag)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+
+            if (dayMatch) {
+                const resetMs = getNextWeeklyResetMs(dayMatch[1], dayMatch[2]);
                 const diffMs = resetMs - now;
                 if (diffMs > 0) {
-                    claudeWeeklyTimePct = (diffMs / (7 * 24 * 60 * 60 * 1000)) * 100;
+                    claudeWeeklyTimePct = (diffMs / weekMs) * 100;
                     claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
                 }
+            } else if (tomorrowMatch) {
+                // Reset is morgen op een specifieke tijd
+                let h = parseInt(tomorrowMatch[1]), m = parseInt(tomorrowMatch[2]);
+                const ampm = (tomorrowMatch[3] || "").toUpperCase();
+                if (ampm === "PM" && h < 12) h += 12;
+                if (ampm === "AM" && h === 12) h = 0;
+                const resetDate = new Date();
+                resetDate.setDate(resetDate.getDate() + 1);
+                resetDate.setHours(h, m, 0, 0);
+                const diffMs = resetDate.getTime() - now;
+                if (diffMs > 0) {
+                    claudeWeeklyTimePct = (diffMs / weekMs) * 100;
+                    claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
+                }
+            } else if (todayMatch) {
+                // Reset is vandaag op een specifieke tijd
+                let h = parseInt(todayMatch[1]), m = parseInt(todayMatch[2]);
+                const ampm = (todayMatch[3] || "").toUpperCase();
+                if (ampm === "PM" && h < 12) h += 12;
+                if (ampm === "AM" && h === 12) h = 0;
+                const resetDate = new Date();
+                resetDate.setHours(h, m, 0, 0);
+                const diffMs = resetDate.getTime() - now;
+                if (diffMs > 0) {
+                    claudeWeeklyTimePct = (diffMs / weekMs) * 100;
+                    claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
+                } else {
+                    claudeWeeklyTimerText = "Herstellen...";
+                }
             } else {
-                // Strip "Resets in" / "Reset in" / "Reset" prefix
-                claudeWeeklyTimerText = resetWeekly.replace(/^resets?\s+in\s+/i, "").replace(/^resets?\s+/i, "");
-                // Parse remaining time to calculate bar percentage
-                // Handles formats like "20 hr 47 min 33", "2d 5u 12m", "1 day 3 hours"
-                const tm = claudeWeeklyTimerText.match(/(?:(\d+)\s*d(?:ay)?s?)?\s*(?:(\d+)\s*h(?:r|r?s|ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?\s*(?:(\d+)\s*s(?:ec(?:onds?)?)?)?/i);
-                if (tm) {
+                // --- Pad 4: relatief tijdformaat "Resets in 6d 20u 47m" of "Herstelt over 6d 20u" ---
+                // Strip alle bekende prefixen (EN + NL)
+                claudeWeeklyTimerText = resetWeekly
+                    .replace(/^(?:resets?\s+in|herstelt\s+(?:over|in))\s+/i, "")
+                    .replace(/^(?:resets?|herstelt)\s+/i, "")
+                    .replace(/^(?:over|in)\s+/i, "")
+                    .trim();
+
+                // Uitgebreide tijdparser: EN (d/h/hr/hours) én NL (d/dag/dagen, u/uur/uren)
+                const tm = claudeWeeklyTimerText.match(
+                    /(?:(\d+)\s*d(?:ag(?:en)?|ay)?s?)?\s*(?:(\d+)\s*(?:h(?:r|r?s|ours?)?|u(?:ur|ren?)?))?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?\s*(?:(\d+)\s*s(?:ec(?:onds?)?)?)?/i
+                );
+                if (tm && (tm[1] || tm[2] || tm[3] || tm[4])) {
                     const diffMs = (
                         (parseInt(tm[1] || 0) * 86400) +
                         (parseInt(tm[2] || 0) * 3600) +
@@ -625,7 +670,9 @@ function renderDashboardProgress() {
                         (parseInt(tm[4] || 0))
                     ) * 1000;
                     if (diffMs > 0) {
-                        claudeWeeklyTimePct = (diffMs / (7 * 24 * 60 * 60 * 1000)) * 100;
+                        claudeWeeklyTimePct = (diffMs / weekMs) * 100;
+                        // Gebruik onze eigen formatter voor consistente weergave
+                        claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
                     }
                 }
             }

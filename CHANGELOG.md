@@ -4,6 +4,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.6.6] — 2026-05-26
+
+### Opgelost
+- Claude Pro wekelijkse resettimer toonde foute uren: Nederlandse eenheid "u" (uur) werd niet herkend door de tijdparser — de uren-component werd volledig overgeslagen, waardoor de balk te weinig tijd toonde
+- `getNextWeeklyResetMs` zocht alleen de eerste 3 tekens van de dagnaam → "dinsdag" werd "din" (niet in kaart), viel toevallig goed op de standaard-waarde dinsdag maar zou fout gaan voor andere dagen
+- Ontbrekende ondersteuning voor "tomorrow at HH:MM" / "morgen om HH:MM" format bij reset op volgende dag
+- Ontbrekende ondersteuning voor "today at HH:MM" / "vandaag om HH:MM" format bij reset vandaag
+- Nederlandse prefix "Herstelt over" / "Herstelt in" werd niet gestript bij relatief tijdformaat
+- Tijdparser uitgebreid met NL-formaten: d/dag/dagen voor dagen, u/uur/uren voor uren
+
+---
+
 ## [0.6.5] — 2026-05-26
 
 ### Opgelost
