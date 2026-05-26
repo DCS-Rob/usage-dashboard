@@ -302,9 +302,7 @@ function initApp() {
         if (res.lt_current_user) {
             state.currentUser = res.lt_current_user;
             showView("dashboard");
-            loadUserData(() => {
-                initRemoteRefreshListener();
-            });
+            loadUserData();
         } else if (res.lt_remembered_login) {
             // Auto-login met opgeslagen credentials
             const { username, passHash } = res.lt_remembered_login;
@@ -314,7 +312,7 @@ function initApp() {
                     state.currentUser = username;
                     DB.set({ lt_current_user: username }, () => {
                         showView("dashboard");
-                        loadUserData(() => { initRemoteRefreshListener(); });
+                        loadUserData();
                     });
                 } else {
                     showView("login");
@@ -2079,92 +2077,6 @@ function startFastPollingForRemoteSync(baseline) {
     }, 2500);
 }
 
-// PC Host: Check for remote sync trigger from phone client (runs periodically on the PC extension dashboard)
-function checkForRemoteRefreshRequest() {
-    if (isSyncClient()) return;
-    
-    DB.get(["lt_sync_config"], (res) => {
-        const config = res.lt_sync_config;
-        if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
-
-        fetch(`https://api.npoint.io/${config.binId}?nocache=${Date.now()}`, {
-            cache: "no-store",
-            headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache"
-            }
-        })
-        .then(res => {
-            if (!res.ok) throw new Error("Fout bij remote-check");
-            return res.json();
-        })
-        .then(data => {
-            if (!data.data) return;
-            const decryptedStr = CryptoSync.decrypt(data.data, config.pairingKey);
-            const decryptedData = JSON.parse(decryptedStr);
-
-            if (decryptedData.refreshRequested === true) {
-                const reqTime = decryptedData.refreshRequestedAt || 0;
-                // Exclude requests older than 2 minutes to prevent infinite sync loops
-                if (Date.now() - reqTime < 120000) {
-                    logSync("[Cloud Remote] Afstandsbediening verzoek gedetecteerd vanaf uw telefoon! Scrapers starten...");
-                    showToast(`<i class="fa-solid fa-mobile-screen-button"></i> Synchronisatie op afstand geactiveerd vanaf uw telefoon...`);
-                    
-                    // Trigger scrape on the PC
-                    triggerSyncNow("claude");
-                    setTimeout(() => triggerSyncNow("chatgpt"), 1000);
-                } else {
-                    // Reset stale request
-                    resetRemoteRefreshRequestFlag();
-                }
-            }
-        })
-        .catch(err => {
-            // Silently ignore background polling errors
-        });
-    });
-}
-
-function resetRemoteRefreshRequestFlag() {
-    if (isSyncClient()) return;
-    DB.get(["lt_sync_config"], (res) => {
-        const config = res.lt_sync_config;
-        if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
-
-        const dataToUpload = {
-            logs: state.userLogs,
-            threads: state.userThreads,
-            settings: state.userSettings,
-            syncStatus: state.syncStatus,
-            refreshRequested: false,
-            refreshRequestedAt: null
-        };
-
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
-
-        fetch(`https://api.npoint.io/${config.binId}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ data: encryptedStr })
-        })
-        .then(() => logSync("[Cloud Remote] Stale remote request gereset."))
-        .catch(err => console.error("[Remote Reset] failed:", err));
-    });
-}
-
-// Poll for remote refresh triggers from phone (runs every 15 seconds ONLY on the PC host dashboard)
-let remoteCheckIntervalId = null;
-function initRemoteRefreshListener() {
-    if (isSyncClient()) return;
-    
-    if (remoteCheckIntervalId) clearInterval(remoteCheckIntervalId);
-    remoteCheckIntervalId = setInterval(() => {
-        checkForRemoteRefreshRequest();
-    }, 15000);
-    logSync("[Cloud Remote] Polling luisteraar voor afstandsbediening gestart (15s interval).");
-}
 
 function updateMobileSyncIndicator(isSuccess) {
     const liveSyncHeader = document.querySelector(".header-sync-status");

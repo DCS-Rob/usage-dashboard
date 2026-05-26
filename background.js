@@ -246,15 +246,18 @@ function logSync(message) {
 
 // =================================================================
 // Remote refresh listener (draait in service worker, werkt ook als
-// het dashboardtabblad niet open is). Voorkomt dubbele triggers via
-// een throttle in chrome.storage.
+// het dashboardtabblad niet open is).
+// Throttle wordt opgeslagen in chrome.storage.local zodat het
+// SW-restarts overleeft — voorkomt dubbele scrape-triggers.
 // =================================================================
-let lastBgScrapeTrigger = 0;
-
 function checkForRemoteRefreshRequestBG() {
-    chrome.storage.local.get(["lt_sync_config"], (res) => {
+    chrome.storage.local.get(["lt_sync_config", "lt_last_bg_scrape"], (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
+
+        // Throttle: max 1 scrape-trigger per 90s (overleeft SW-restarts)
+        const lastTrigger = res.lt_last_bg_scrape || 0;
+        if (Date.now() - lastTrigger < 90000) return;
 
         fetch(`https://api.npoint.io/${config.binId}?nocache=${Date.now()}`, {
             cache: "no-store",
@@ -283,13 +286,12 @@ function checkForRemoteRefreshRequestBG() {
                 return;
             }
 
-            // Throttle: max 1 scrape-trigger per 45s vanuit background
-            if (Date.now() - lastBgScrapeTrigger < 45000) return;
-            lastBgScrapeTrigger = Date.now();
+            // Sla trigger-tijd op in storage (overleeft SW-suspend/restart)
+            chrome.storage.local.set({ lt_last_bg_scrape: Date.now() });
 
             logSync("[Cloud Remote BG] Telefoon vroeg om refresh — scrapers worden op achtergrond gestart.");
             triggerScrapeFromBackground("claude");
-            setTimeout(() => triggerScrapeFromBackground("chatgpt"), 1200);
+            setTimeout(() => triggerScrapeFromBackground("chatgpt"), 1500);
         })
         .catch(() => { /* stil */ });
     });
