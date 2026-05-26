@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.6.4] — 2026-05-26
+
+### Opgelost
+- ChatGPT/Codex tab werd meerdere keren achter elkaar herladen door twee onafhankelijke pollers (background alarm + dashboard interval 15s)
+- Dashboard-poller (`initRemoteRefreshListener`, `checkForRemoteRefreshRequest`, `resetRemoteRefreshRequestFlag`) verwijderd uit `app.js` — background alarm is de enige poller
+- Throttle in `background.js` opgeslagen in `chrome.storage.local` (90s cooldown) zodat het SW-restarts overleeft
+- MV3 CSP: `onclick` op Reports/Help knoppen verplaatst naar `app.js` event listeners
+- MV3 CSP: `onfocus`/`onblur` op koppel-URL input verplaatst naar `app.js` event listeners
+- Chart.js lokaal gebundeld als `lib/chart.min.js` (CDN geblokkeerd door MV3 CSP)
+- `broadcastStateUpdate` gebruikt nu `.catch()` voor async MV3 Promise-fouten
+
+---
+
 ## [0.6.3] — 2026-05-25
 
 ### Verwijderd

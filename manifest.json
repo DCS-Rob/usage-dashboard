@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Usage Dashboard - LLM Scraper",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjBbxTq8C/YGJ2gEzKjyDYF9drk62jg6bcpEqeNAFxgzjebsITnIO/I1MyrWim/FfI6z+hTjd5q6vLSAwt3L5jAwYLGBdCqIo3wbEereWL/wCgJ2rT4LXRnTOMFMtpOYhc1FtH5HtpmXWw0WQim2W+bMD84iIvA0vl7iFOVuzvpX+SULIr9rj5bTsdUxn42/dYcUqrPi51MIzIfXd674UcyY6WvNs98npEoX9FJBE/ax+JIuAzOUGt0SffTM4J13/foDliCeSugXhdrGFPgl/YFP7aS87pTyJWbw/Ose9K2sMgeCyLbpGKRZjsKxqEZb9NhHMv5hmqaEwx95rSIh7fwIDAQAB",
   "description": "Monitort en synchroniseert automatisch je Claude Pro en ChatGPT Business usage en rolling limieten.",
   "permissions": [
