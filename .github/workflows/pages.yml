@@ -1,0 +1,52 @@
+name: Deploy PWA to GitHub Pages
+
+# Publiceert de mobiele PWA (statische bestanden) naar GitHub Pages.
+# De data blijft E2E-versleuteld in npoint.io, dus publieke hosting is veilig:
+# zonder de pairingKey (alleen via QR naar de eigen telefoon) valt er niets te lezen.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Eén deploy tegelijk; nieuwe push annuleert een lopende run.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Alleen de PWA-bestanden publiceren — geen extensie-manifest,
+      # background.js of content.js (die horen alleen in de Chrome-extensie).
+      - name: Assemble PWA site
+        run: |
+          mkdir -p _site/assets _site/lib
+          cp index.html app.js style.css sw.js manifest.webmanifest _site/
+          cp assets/*.svg _site/assets/
+          cp lib/*.js _site/lib/
+          touch _site/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "_site"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js voor Analytics (lokaal gebundeld — CDN geblokkeerd door MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.6.6">
+    <link rel="stylesheet" href="style.css?v=0.7.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -627,7 +627,16 @@
                                             </div>
                                         </div>
 
-                                        <p class="desc mb-2" style="font-size: 0.78rem;"><i class="fa-solid fa-server" style="color: var(--color-gemini);"></i> Host: <strong>agents-controller</strong> <span style="color: var(--text-muted); font-size: 0.72rem;">(Tailscale vereist op telefoon)</span></p>
+                                        <div class="form-group mb-2">
+                                            <label style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-server" style="color: var(--color-gemini);"></i> PWA-host (waar de telefoon de app laadt):</label>
+                                            <div style="display: flex; gap: 8px;">
+                                                <input type="text" id="sync-pwa-host" style="font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); color: #fff; flex: 1; padding: 6px 8px; border-radius: 6px;" placeholder="https://dcs-rob.github.io/usage-dashboard">
+                                                <button type="button" id="btn-save-pwa-host" class="btn-secondary" style="padding: 0 12px;" title="Host opslaan">
+                                                    <i class="fa-solid fa-floppy-disk"></i>
+                                                </button>
+                                            </div>
+                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">Standaard: publieke GitHub Pages (werkt op elke telefoon). Een eigen Tailscale-host kan ook — die is volledig privé maar vereist Tailscale op de telefoon.</p>
+                                        </div>
 
                                         <p class="desc mb-2" style="font-size: 0.78rem;"><strong>Hoe te installeren op je mobiel:</strong></p>
                                         <ol class="desc" style="padding-left: 1.25rem; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
@@ -686,6 +695,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.6.6"></script>
+    <script src="app.js?v=0.7.0"></script>
 </body>
 </html>

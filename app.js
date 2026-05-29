@@ -2,7 +2,12 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.6.6";
+const APP_VERSION = "0.7.0";
+
+// Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
+// De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
+// (bv. een eigen Tailscale-host voor volledig privé verkeer). Opgeslagen onder lt_pwa_host.
+const DEFAULT_PWA_HOST = "https://dcs-rob.github.io/usage-dashboard";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -1640,6 +1645,21 @@ function setupEventListeners() {
         });
     }
 
+    // Opslaan van een aangepaste PWA-host (bv. eigen Tailscale-host).
+    const btnSaveHost = document.getElementById("btn-save-pwa-host");
+    if (btnSaveHost) {
+        btnSaveHost.addEventListener("click", () => {
+            const input = document.getElementById("sync-pwa-host");
+            if (!input) return;
+            let host = (input.value || "").trim().replace(/\/+$/, "");
+            if (host && !/^https?:\/\//i.test(host)) host = "https://" + host;
+            DB.set({ lt_pwa_host: host || DEFAULT_PWA_HOST }, () => {
+                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> PWA-host opgeslagen.`);
+                renderMobileSyncSettings();
+            });
+        });
+    }
+
     // Placeholder tabs (MV3 CSP staat geen inline onclick toe)
     const btnReports = document.getElementById("btn-tab-reports");
     if (btnReports) {
@@ -2230,9 +2250,9 @@ function renderMobileSyncSettings() {
     
     if (!connectionStatus) return;
     
-    DB.get(["lt_sync_config"], (res) => {
+    DB.get(["lt_sync_config", "lt_pwa_host"], (res) => {
         const config = res.lt_sync_config;
-        
+
         if (config && config.enabled) {
             connectionStatus.className = "badge badge-success";
             connectionStatus.innerHTML = `<i class="fa-solid fa-cloud"></i> Actief`;
@@ -2241,13 +2261,18 @@ function renderMobileSyncSettings() {
 
             pairingKeyInput.value = config.pairingKey;
 
-            // Vaste host: agents-controller (Tailscale)
-            const hostUrl = "https://agents-controller.tail00aec2.ts.net:9000";
+            // Configureerbare host (default = publieke GitHub Pages). Strip trailing slashes.
+            const hostUrl = (res.lt_pwa_host || DEFAULT_PWA_HOST).replace(/\/+$/, "");
             const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
             pwaLink.href = fullPwaUrl;
-            pwaLink.innerHTML = `agents-controller.tail00aec2.ts.net:9000 <i class="fa-solid fa-up-right-from-square"></i>`;
+            const hostLabel = hostUrl.replace(/^https?:\/\//, "");
+            pwaLink.innerHTML = `${hostLabel} <i class="fa-solid fa-up-right-from-square"></i>`;
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
             document.getElementById("sync-qrcode").innerHTML = `<img src="${qrUrl}" alt="QR Code" style="display: block; width: 130px; height: 130px;">`;
+
+            // Vul het bewerkbare host-veld
+            const hostInput = document.getElementById("sync-pwa-host");
+            if (hostInput) hostInput.value = hostUrl;
         } else {
             connectionStatus.className = "badge";
             connectionStatus.innerText = "Niet Gekoppeld";

@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.7.0] — 2026-05-29
+
+### Toegevoegd
+- **Publieke mobiele hosting via GitHub Pages** — de PWA wordt nu automatisch gepubliceerd op `https://dcs-rob.github.io/usage-dashboard/` zodat anderen hun telefoon kunnen koppelen zónder Tailscale. Data blijft E2E-versleuteld in npoint.io, dus publieke hosting is veilig (zonder pairingKey valt er niets te lezen).
+- **Configureerbare PWA-host** in Instellingen → Mobiele Synchronisatie. Default = publieke GitHub Pages; je eigen Tailscale-host kan als privé-alternatief worden ingevuld (opgeslagen onder `lt_pwa_host`).
+- GitHub Actions workflow `.github/workflows/pages.yml` die alleen de PWA-bestanden (geen extensie-manifest/background/content) naar Pages deployt.
+
+### Opgelost
+- `manifest.webmanifest` verwees naar `assets/Usage Dashboard-logo.svg` (spatie + hoofdletters) → 404 op case-sensitive hosts zoals GitHub Pages. Gecorrigeerd naar `assets/usage-dashboard-logo.svg`.
+- Expliciete `"scope": "./"` toegevoegd aan de webmanifest voor correcte PWA-scope onder een subpad-URL.
+
+---
+
 ## [0.6.6] — 2026-05-26
 
 ### Opgelost

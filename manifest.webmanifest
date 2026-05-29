@@ -3,6 +3,7 @@
   "short_name": "Usage Dashboard",
   "description": "Monitort en synchroniseert automatisch je Claude Pro en ChatGPT Business usage.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0d0d12",
   "theme_color": "#0d0d12",
@@ -10,7 +11,7 @@
   "categories": ["productivity", "utilities"],
   "icons": [
     {
-      "src": "assets/Usage Dashboard-logo.svg",
+      "src": "assets/usage-dashboard-logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
