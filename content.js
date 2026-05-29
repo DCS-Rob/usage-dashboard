@@ -2,6 +2,44 @@
    USAGE DASHBOARD - INJECTED CONTENT SCRIPT (Tab Sniffer & Scraper)
    ========================================================================== */
 
+// Bijgehouden interval-IDs zodat we ze kunnen stoppen als de extensie-context
+// ongeldig wordt (na reload van de extensie terwijl de tab al open was).
+const _intervals = [];
+
+// Geeft true terug zolang de extensie-context nog geldig is.
+function isContextValid() {
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
+    catch (e) { return false; }
+}
+
+// Veilige wrapper voor chrome.runtime.sendMessage — slokt "Extension context
+// invalidated"-fouten stil op en ruimt alle intervals op bij invalidatie.
+function safeSendMessage(message) {
+    if (!isContextValid()) { _stopAllIntervals(); return; }
+    try {
+        chrome.runtime.sendMessage(message).catch(() => {});
+    } catch (e) {
+        _stopAllIntervals();
+    }
+}
+
+function _stopAllIntervals() {
+    _intervals.forEach(id => clearInterval(id));
+    _intervals.length = 0;
+}
+
+// Vervangt window.setInterval zodat alle interval-IDs automatisch worden
+// bijgehouden voor schone opruiming.
+const _origSetInterval = window.setInterval.bind(window);
+function trackedInterval(fn, ms, ...args) {
+    const id = _origSetInterval(() => {
+        if (!isContextValid()) { _stopAllIntervals(); return; }
+        fn(...args);
+    }, ms);
+    _intervals.push(id);
+    return id;
+}
+
 console.log("USAGE DASHBOARD Content Script active on tab:", window.location.host);
 
 // Run initialization
@@ -20,7 +58,7 @@ function initContentScript() {
    ========================================================================== */
 function setupChatListeners() {
     // Run periodically to bind to textareas and buttons as pages load/unload
-    setInterval(() => {
+    trackedInterval(() => {
         const host = window.location.host;
         if (host.includes("chatgpt.com") || host.includes("openai.com")) {
             bindChatGPT();
@@ -116,7 +154,7 @@ function bindGemini() {
 
     // Poll every 200ms to keep lastGeminiText fresh — avoids race where
     // Gemini clears the input before our click/keydown handler runs
-    setInterval(() => {
+    trackedInterval(() => {
         const t = captureGeminiText();
         if (t) lastGeminiText = t;
     }, 200);
@@ -173,7 +211,7 @@ function handleMessageSent(provider, textContent) {
     console.log(`[USAGE DASHBOARD] Detected prompt sent to ${provider}: ~${tokenEstimate} tokens.`);
 
     // Send payload to background service worker
-    chrome.runtime.sendMessage({
+    safeSendMessage({
         type: "AUTO_LOG_MESSAGE",
         provider,
         log: {
@@ -193,7 +231,7 @@ let personalTabClicked = false;
 function setupSettingsScraper() {
     // Monitor URL shifts
     let lastUrl = window.location.href;
-    setInterval(() => {
+    trackedInterval(() => {
         if (window.location.href !== lastUrl) {
             lastUrl = window.location.href;
             personalTabClicked = false;
@@ -241,7 +279,7 @@ function setupGeminiLimitDetector() {
             if (now - limitReportedAt < 60000) return; // max once per minute
             limitReportedAt = now;
             logSync("[Gemini] Limietmelding gedetecteerd in pagina.");
-            chrome.runtime.sendMessage({
+            safeSendMessage({
                 type: "SYNC_FROM_TAB",
                 provider: "gemini",
                 data: {
@@ -422,7 +460,7 @@ function scrapeClaudeUsage() {
     if (pctCurrentSession !== null || pctWeekly !== null) {
         logSync(`[Scraper] Claude data succesvol uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, ResetSessie="${resetCurrentSessionText}", ResetWeek="${resetWeeklyText}"`);
         
-        chrome.runtime.sendMessage({
+        safeSendMessage({
             type: "SYNC_FROM_TAB",
             provider: "claude",
             data: {
@@ -446,7 +484,7 @@ function scrapeClaudeUsage() {
         const pctUsed = Math.round((val / max) * 100);
         logSync(`[Scraper] Progressbar fallback gevonden: pctUsed=${pctUsed}%`);
         
-        chrome.runtime.sendMessage({
+        safeSendMessage({
             type: "SYNC_FROM_TAB",
             provider: "claude",
             data: {
@@ -603,7 +641,7 @@ function scrapeChatGPTUsage() {
         if (pct5h !== null || pctWeekly !== null) {
             logSync(`[Scraper] ChatGPT data succesvol uitgelezen: 5h=${pct5h}%, 5hReset="${reset5hText}", Weekly=${pctWeekly}%, WeeklyReset="${resetWeeklyText}"`);
             
-            chrome.runtime.sendMessage({
+            safeSendMessage({
                 type: "SYNC_FROM_TAB",
                 provider: "chatgpt",
                 data: {
@@ -630,7 +668,7 @@ function scrapeChatGPTUsage() {
     if (msgMatch) {
         const messagesUsed = parseInt(msgMatch[1]);
         logSync("[Scraper] Fallback matched (berichten verzonden): " + messagesUsed);
-        chrome.runtime.sendMessage({
+        safeSendMessage({
             type: "SYNC_FROM_TAB",
             provider: "chatgpt",
             data: {
@@ -648,13 +686,17 @@ function scrapeChatGPTUsage() {
 // Persist scraper events into storage logs
 function logSync(message) {
     console.log("[USAGE DASHBOARD Scraper Log]", message);
-    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+    if (!isContextValid()) return;
+    try {
         chrome.storage.local.get(["lt_sync_logs"], (res) => {
+            if (!isContextValid()) return;
             const logs = res.lt_sync_logs || [];
             const timeStr = new Date().toLocaleTimeString("nl-NL");
             logs.unshift(`[${timeStr}] ${message}`);
             if (logs.length > 50) logs.pop();
             chrome.storage.local.set({ lt_sync_logs: logs });
         });
+    } catch (e) {
+        // Context invalidated — stil negeren
     }
 }

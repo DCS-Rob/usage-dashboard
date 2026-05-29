@@ -4,6 +4,30 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.8.0-beta.1] — 2026-05-29
+
+### Toegevoegd
+- Beta voor veiligere mobiele koppeling: pairing keys worden nu met `crypto.getRandomValues()` als 256-bit `LT2-...` secret gegenereerd.
+- Nieuwe mobiele koppel-links gebruiken een URL-fragment (`#v=2&key=...&bin=...`) zodat de secret niet als querystring naar de PWA-host wordt gestuurd.
+- QR-codes worden lokaal gegenereerd via `lib/qrcode.min.js`; de volledige koppel-URL wordt niet meer naar een externe QR-provider gestuurd.
+- Nieuwe beta-koppelingen schrijven AES-GCM data (`secureData`) plus een legacy fallback (`data`) naar npoint.io, zodat rollback naar 0.7.0 dezelfde bin nog kan lezen.
+
+### Behouden
+- Bestaande 0.7.x-koppelingen zonder `cryptoVersion` blijven werken via de legacy XOR-flow.
+- De remote refresh-flow blijft hetzelfde; deze beta wijzigt nog geen polling/WebSocket-architectuur.
+
+---
+
+## [0.7.1] — 2026-05-29
+
+### Opgelost
+- `Uncaught Error: Extension context invalidated` in `content.js` na het herladen van de extensie terwijl een ChatGPT/Claude/Gemini-tab al open was
+- Alle `chrome.runtime.sendMessage`-aanroepen vervangen door `safeSendMessage()` — slokt invalidatie-fouten stil op
+- Alle `setInterval`-calls vervangen door `trackedInterval()` — slaat interval-IDs op en stopt ze automatisch zodra de extensie-context ongeldig wordt
+- `logSync` beveiligd: `chrome.storage`-aanroepen worden overgeslagen als de context al weg is
+
+---
+
 ## [0.7.0] — 2026-05-29
 
 ### Toegevoegd

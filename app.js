@@ -2,7 +2,9 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.7.1";
+const APP_VERSION_LABEL = "0.8.0-beta.1";
+const PAIRING_CRYPTO_VERSION = 2;
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -29,7 +31,7 @@ function renderBuildInfoStrip() {
 
         const render = (swVersion, pcBinTail) => {
             const tail = pcBinTail || binTail;
-            slot.textContent = `v${APP_VERSION} · ${env} · SW:${swVersion} · bin:…${tail}`;
+            slot.textContent = `v${APP_VERSION_LABEL} · ${env} · SW:${swVersion} · bin:…${tail}`;
         };
 
         if (env === "PWA" && navigator.serviceWorker && navigator.serviceWorker.controller) {
@@ -263,20 +265,56 @@ function isSyncClient() {
     }
 }
 
+function parsePairingParams(rawValue) {
+    if (!rawValue) return null;
+    const candidates = [];
+    const value = String(rawValue).trim();
+
+    try {
+        const url = new URL(value);
+        if (url.search) candidates.push(url.search.slice(1));
+        if (url.hash) candidates.push(url.hash.slice(1));
+    } catch (e) {
+        const hashIndex = value.indexOf("#");
+        const queryIndex = value.indexOf("?");
+        if (hashIndex >= 0) candidates.push(value.slice(hashIndex + 1));
+        if (queryIndex >= 0) candidates.push(value.slice(queryIndex + 1));
+        candidates.push(value.replace(/^[?#]/, ""));
+    }
+
+    for (const candidate of candidates) {
+        const clean = candidate.replace(/^\//, "").replace(/^\?/, "");
+        const params = new URLSearchParams(clean);
+        const key = params.get("key");
+        const bin = params.get("bin");
+        if (key && bin) {
+            const version = Number(params.get("v") || params.get("cryptoVersion") || (key.startsWith("LT2-") ? 2 : 1));
+            return {
+                pairingKey: key,
+                binId: bin,
+                cryptoVersion: version >= 2 ? 2 : 1,
+                enabled: true
+            };
+        }
+    }
+    return null;
+}
+
+function getPairingConfigFromLocation() {
+    return parsePairingParams(window.location.hash) || parsePairingParams(window.location.search);
+}
+
+function persistMobileClientConfig(config) {
+    localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
+    CookieStorage.set("lt_sync_client_config", config);
+}
+
 function initApp() {
     // 1. Check for sync parameters in URL (for mobile pairing link)
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlKey = urlParams.get("key");
-    const urlBin = urlParams.get("bin");
+    const pairingConfig = getPairingConfigFromLocation();
 
-    if (urlKey && urlBin) {
-        const config = {
-            pairingKey: urlKey,
-            binId: urlBin,
-            enabled: true
-        };
-        localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
-        CookieStorage.set("lt_sync_client_config", config);
+    if (pairingConfig) {
+        persistMobileClientConfig(pairingConfig);
         
         // Clean URL parameters for a clean experience
         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
@@ -1398,36 +1436,15 @@ function setupEventListeners() {
                 return;
             }
             try {
-                // Try parsing as full URL first
-                let key = null;
-                let bin = null;
-                
-                if (urlVal.startsWith("http://") || urlVal.startsWith("https://")) {
-                    const url = new URL(urlVal);
-                    key = url.searchParams.get("key");
-                    bin = url.searchParams.get("bin");
-                } else {
-                    // Try parsing as parameters query string directly
-                    const urlParams = new URLSearchParams(urlVal.includes("?") ? urlVal.split("?")[1] : urlVal);
-                    key = urlParams.get("key");
-                    bin = urlParams.get("bin");
-                }
-                
-                if (key && bin) {
-                    const config = {
-                        pairingKey: key,
-                        binId: bin,
-                        enabled: true
-                    };
-                    localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
-                    CookieStorage.set("lt_sync_client_config", config);
-                    
+                const config = parsePairingParams(urlVal);
+                if (config) {
+                    persistMobileClientConfig(config);
                     showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Koppelgegevens succesvol opgeslagen!`);
                     setTimeout(() => {
                         window.location.reload();
                     }, 1200);
                 } else {
-                    alert("De ingevoerde URL is ongeldig. Zorg ervoor dat 'key' en 'bin' in de parameters staan.");
+                    alert("De ingevoerde URL is ongeldig. Zorg ervoor dat 'key' en 'bin' in de koppeling staan.");
                 }
             } catch (err) {
                 alert("Ongeldige invoer. Plak de volledige URL die op de desktop wordt weergegeven.");
@@ -1836,6 +1853,98 @@ function showToast(message) {
 
 // 1. Encryption and Decryption Helper
 const CryptoSync = {
+    textEncoder: new TextEncoder(),
+    textDecoder: new TextDecoder(),
+
+    bytesToBase64Url(bytes) {
+        let binary = "";
+        bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    },
+
+    base64UrlToBytes(value) {
+        const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+        const binary = atob(padded);
+        return Uint8Array.from(binary, ch => ch.charCodeAt(0));
+    },
+
+    generatePairingKey() {
+        if (!crypto || !crypto.getRandomValues) {
+            throw new Error("Crypto API niet beschikbaar voor veilige key-generatie.");
+        }
+        const bytes = new Uint8Array(32);
+        crypto.getRandomValues(bytes);
+        return `LT2-${this.bytesToBase64Url(bytes)}`;
+    },
+
+    getCryptoVersion(config) {
+        return Number(config && config.cryptoVersion) || 1;
+    },
+
+    async importAesKey(pairingKey) {
+        if (!crypto || !crypto.subtle) {
+            throw new Error("Web Crypto API niet beschikbaar voor AES-GCM.");
+        }
+        const keyMaterial = pairingKey.startsWith("LT2-")
+            ? this.base64UrlToBytes(pairingKey.slice(4))
+            : this.textEncoder.encode(pairingKey);
+        if (keyMaterial.length !== 32) {
+            throw new Error("Ongeldige AES key-lengte.");
+        }
+        return crypto.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    },
+
+    async encryptPayload(text, config) {
+        if (this.getCryptoVersion(config) >= 2) {
+            const iv = new Uint8Array(12);
+            crypto.getRandomValues(iv);
+            const key = await this.importAesKey(config.pairingKey);
+            const cipherBuffer = await crypto.subtle.encrypt(
+                { name: "AES-GCM", iv },
+                key,
+                this.textEncoder.encode(text)
+            );
+            return `v2.${this.bytesToBase64Url(iv)}.${this.bytesToBase64Url(new Uint8Array(cipherBuffer))}`;
+        }
+        return this.encrypt(text, config.pairingKey);
+    },
+
+    async decryptPayload(payload, config) {
+        const shouldUseV2 = payload && payload.startsWith("v2.");
+        if (shouldUseV2) {
+            const parts = payload.split(".");
+            if (parts.length !== 3 || parts[0] !== "v2") {
+                throw new Error("Ongeldig AES-GCM payload-formaat.");
+            }
+            const key = await this.importAesKey(config.pairingKey);
+            const iv = this.base64UrlToBytes(parts[1]);
+            const cipherBytes = this.base64UrlToBytes(parts[2]);
+            const plainBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipherBytes);
+            return this.textDecoder.decode(plainBuffer);
+        }
+        return this.decrypt(payload, config.pairingKey);
+    },
+
+    getPayload(cloudDocument, config) {
+        if (this.getCryptoVersion(config) >= 2 && cloudDocument.secureData) {
+            return cloudDocument.secureData;
+        }
+        return cloudDocument.data;
+    },
+
+    async buildCloudDocument(text, config) {
+        const encrypted = await this.encryptPayload(text, config);
+        if (this.getCryptoVersion(config) >= 2) {
+            return {
+                data: this.encrypt(text, config.pairingKey),
+                secureData: encrypted,
+                cryptoVersion: 2
+            };
+        }
+        return { data: encrypted };
+    },
+
     encrypt(text, key) {
         const textToBytes = new TextEncoder().encode(text);
         const keyBytes = new TextEncoder().encode(key);
@@ -1899,10 +2008,11 @@ function loadCloudUserData(isManual = false) {
             if (!res.ok) throw new Error("Fout bij ophalen van sync data.");
             return res.json();
         })
-        .then(data => {
-            if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
+        .then(async data => {
+            const payload = CryptoSync.getPayload(data, syncClient);
+            if (!payload) throw new Error("Geen gecodeerde data gevonden.");
             
-            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
+            const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
             const decryptedData = JSON.parse(decryptedStr);
             
             state.userLogs = decryptedData.logs || [];
@@ -1988,11 +2098,12 @@ function requestRemoteRefresh() {
         if (!res.ok) throw new Error("Fout bij ophalen huidige sync data.");
         return res.json();
     })
-    .then(data => {
-        if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
+    .then(async data => {
+        const payload = CryptoSync.getPayload(data, syncClient);
+        if (!payload) throw new Error("Geen gecodeerde data gevonden.");
 
         // 2. Decrypt
-        const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
+        const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
         const decryptedData = JSON.parse(decryptedStr);
 
         // Bewaar baseline timestamps — fast-poll gebruikt deze om écht-verse data
@@ -2009,14 +2120,14 @@ function requestRemoteRefresh() {
         decryptedData.refreshRequestedAt = Date.now();
 
         // 4. Encrypt and POST it back to the bin
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(decryptedData), syncClient.pairingKey);
+        const cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(decryptedData), syncClient);
 
         return fetch(`https://api.npoint.io/${syncClient.binId}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ data: encryptedStr })
+            body: JSON.stringify(cloudDocument)
         }).then(res => ({ res, baseline }));
     })
     .then(({ res, baseline }) => {
@@ -2030,10 +2141,11 @@ function requestRemoteRefresh() {
                 headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" }
             }))
             .then(r => r.json())
-            .then(verify => {
+            .then(async verify => {
                 let verified = false;
                 try {
-                    const dec = JSON.parse(CryptoSync.decrypt(verify.data, syncClient.pairingKey));
+                    const verifyPayload = CryptoSync.getPayload(verify, syncClient);
+                    const dec = JSON.parse(await CryptoSync.decryptPayload(verifyPayload, syncClient));
                     verified = dec.refreshRequested === true;
                     console.log("[USAGE DASHBOARD Phone] Verificatie:", verified ? "OK (flag staat true in bin)" : "FAIL (flag niet zichtbaar)", dec);
                 } catch (e) {
@@ -2103,8 +2215,9 @@ function startFastPollingForRemoteSync(baseline) {
             }
         })
         .then(res => res.json())
-        .then(data => {
-            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
+        .then(async data => {
+            const payload = CryptoSync.getPayload(data, syncClient);
+            const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
             const decryptedData = JSON.parse(decryptedStr);
 
             const cloudClaude = decryptedData.syncStatus?.claude?.lastSynced || 0;
@@ -2201,7 +2314,7 @@ function logSync(message) {
 function pushUserDataToCloud() {
     if (isSyncClient()) return;
     
-    DB.get(["lt_sync_config"], (res) => {
+    DB.get(["lt_sync_config"], async (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) {
             logSync("[Cloud Sync App] Overslaan: Geen actieve mobiele koppeling geconfigureerd.");
@@ -2219,14 +2332,20 @@ function pushUserDataToCloud() {
             refreshRequestedAt: null
         };
         
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
+        let cloudDocument;
+        try {
+            cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(dataToUpload), config);
+        } catch (err) {
+            logSync(`[Cloud Sync App FOUT] Encryptie mislukt: ${err.message || err}`);
+            return;
+        }
         
         fetch(`https://api.npoint.io/${config.binId}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ data: encryptedStr })
+            body: JSON.stringify(cloudDocument)
         })
         .then(res => {
             if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);
@@ -2236,6 +2355,45 @@ function pushUserDataToCloud() {
             logSync(`[Cloud Sync App FOUT] Upload naar cloud sync mislukt: ${err.message || err}`);
         });
     });
+}
+
+function buildPairingUrl(hostUrl, config) {
+    const params = new URLSearchParams({
+        v: String(config.cryptoVersion || 1),
+        key: config.pairingKey,
+        bin: config.binId
+    });
+    return `${hostUrl.replace(/\/+$/, "")}/index.html#${params.toString()}`;
+}
+
+function renderLocalPairingQr(container, fullPwaUrl) {
+    if (!container) return;
+    if (typeof qrcode !== "function") {
+        container.innerHTML = `<div style="color:#111; font-size:12px; max-width:150px;">QR-module niet geladen. Gebruik de link hieronder.</div>`;
+        return;
+    }
+    try {
+        qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+        const qr = qrcode(0, "M");
+        qr.addData(fullPwaUrl, "Byte");
+        qr.make();
+        container.innerHTML = qr.createSvgTag({
+            cellSize: 4,
+            margin: 10,
+            scalable: true,
+            alt: { text: "Mobiele koppel QR-code" },
+            title: { text: "Usage Dashboard mobiele koppeling" }
+        });
+        const svg = container.querySelector("svg");
+        if (svg) {
+            svg.style.display = "block";
+            svg.style.width = "160px";
+            svg.style.height = "160px";
+        }
+    } catch (err) {
+        console.warn("[USAGE DASHBOARD] Lokale QR-generatie mislukt:", err);
+        container.innerHTML = `<div style="color:#111; font-size:12px; max-width:150px;">QR kon niet lokaal worden gemaakt. Gebruik de link hieronder.</div>`;
+    }
 }
 
 // 4. Render sync status inside Desktop Settings tab
@@ -2263,12 +2421,11 @@ function renderMobileSyncSettings() {
 
             // Configureerbare host (default = publieke GitHub Pages). Strip trailing slashes.
             const hostUrl = (res.lt_pwa_host || DEFAULT_PWA_HOST).replace(/\/+$/, "");
-            const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
+            const fullPwaUrl = buildPairingUrl(hostUrl, config);
             pwaLink.href = fullPwaUrl;
             const hostLabel = hostUrl.replace(/^https?:\/\//, "");
-            pwaLink.innerHTML = `${hostLabel} <i class="fa-solid fa-up-right-from-square"></i>`;
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(fullPwaUrl)}`;
-            document.getElementById("sync-qrcode").innerHTML = `<img src="${qrUrl}" alt="QR Code" style="display: block; width: 130px; height: 130px;">`;
+            pwaLink.innerHTML = `${hostLabel} · veilige beta-koppeling <i class="fa-solid fa-up-right-from-square"></i>`;
+            renderLocalPairingQr(document.getElementById("sync-qrcode"), fullPwaUrl);
 
             // Vul het bewerkbare host-veld
             const hostInput = document.getElementById("sync-pwa-host");
@@ -2279,6 +2436,8 @@ function renderMobileSyncSettings() {
             setupActions.style.display = "block";
             activeInfo.style.display = "none";
             pairingKeyInput.value = "";
+            const qrBox = document.getElementById("sync-qrcode");
+            if (qrBox) qrBox.innerHTML = "";
         }
     });
 }
@@ -2289,24 +2448,38 @@ function generateMobileSync() {
     btn.disabled = true;
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Koppelcode genereren...`;
     
-    const pairingKey = "LT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    let pairingKey;
+    try {
+        pairingKey = CryptoSync.generatePairingKey();
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;
+        alert("Veilige key-generatie is niet beschikbaar in deze browser.");
+        return;
+    }
+    const syncConfig = {
+        enabled: true,
+        pairingKey,
+        cryptoVersion: PAIRING_CRYPTO_VERSION
+    };
     
     const initialData = {
         logs: state.userLogs,
         threads: state.userThreads,
         settings: state.userSettings,
-        syncStatus: state.syncStatus
+        syncStatus: state.syncStatus,
+        refreshRequested: false,
+        refreshRequestedAt: null
     };
     
-    const encryptedStr = CryptoSync.encrypt(JSON.stringify(initialData), pairingKey);
-    
-    fetch("https://www.npoint.io/documents", {
+    CryptoSync.buildCloudDocument(JSON.stringify(initialData), syncConfig)
+    .then(cloudDocument => fetch("https://www.npoint.io/documents", {
         method: "POST",
         headers: {
             "Content-Type": "application/json"
         },
-        body: JSON.stringify({ contents: JSON.stringify({ data: encryptedStr }) })
-    })
+        body: JSON.stringify({ contents: JSON.stringify(cloudDocument) })
+    }))
     .then(res => {
         if (!res.ok) throw new Error("Fout bij initialiseren van cloud bin.");
         return res.json();
@@ -2314,16 +2487,12 @@ function generateMobileSync() {
     .then(resData => {
         const binId = resData.token;
         
-        const syncConfig = {
-            enabled: true,
-            pairingKey: pairingKey,
-            binId: binId
-        };
+        syncConfig.binId = binId;
         
         DB.set({ lt_sync_config: syncConfig }, () => {
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;
-            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Koppelcode gegenereerd!`);
+            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Veilige beta-koppeling gegenereerd!`);
             renderMobileSyncSettings();
         });
     })
