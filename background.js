@@ -211,86 +211,6 @@ function broadcastStateUpdate() {
    ENCRYPTION & BACKGROUND CLOUD UPLOAD SERVICE
    ========================================================================== */
 const CryptoSync = {
-    textEncoder: new TextEncoder(),
-    textDecoder: new TextDecoder(),
-
-    bytesToBase64Url(bytes) {
-        let binary = "";
-        bytes.forEach(byte => { binary += String.fromCharCode(byte); });
-        return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-    },
-
-    base64UrlToBytes(value) {
-        const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-        const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
-        const binary = atob(padded);
-        return Uint8Array.from(binary, ch => ch.charCodeAt(0));
-    },
-
-    getCryptoVersion(config) {
-        return Number(config && config.cryptoVersion) || 1;
-    },
-
-    async importAesKey(pairingKey) {
-        const keyMaterial = pairingKey.startsWith("LT2-")
-            ? this.base64UrlToBytes(pairingKey.slice(4))
-            : this.textEncoder.encode(pairingKey);
-        if (keyMaterial.length !== 32) {
-            throw new Error("Ongeldige AES key-lengte.");
-        }
-        return crypto.subtle.importKey("raw", keyMaterial, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-    },
-
-    async encryptPayload(text, config) {
-        if (this.getCryptoVersion(config) >= 2) {
-            const iv = new Uint8Array(12);
-            crypto.getRandomValues(iv);
-            const key = await this.importAesKey(config.pairingKey);
-            const cipherBuffer = await crypto.subtle.encrypt(
-                { name: "AES-GCM", iv },
-                key,
-                this.textEncoder.encode(text)
-            );
-            return `v2.${this.bytesToBase64Url(iv)}.${this.bytesToBase64Url(new Uint8Array(cipherBuffer))}`;
-        }
-        return this.encrypt(text, config.pairingKey);
-    },
-
-    async decryptPayload(payload, config) {
-        const shouldUseV2 = payload && payload.startsWith("v2.");
-        if (shouldUseV2) {
-            const parts = payload.split(".");
-            if (parts.length !== 3 || parts[0] !== "v2") {
-                throw new Error("Ongeldig AES-GCM payload-formaat.");
-            }
-            const key = await this.importAesKey(config.pairingKey);
-            const iv = this.base64UrlToBytes(parts[1]);
-            const cipherBytes = this.base64UrlToBytes(parts[2]);
-            const plainBuffer = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipherBytes);
-            return this.textDecoder.decode(plainBuffer);
-        }
-        return this.decrypt(payload, config.pairingKey);
-    },
-
-    getPayload(cloudDocument, config) {
-        if (this.getCryptoVersion(config) >= 2 && cloudDocument.secureData) {
-            return cloudDocument.secureData;
-        }
-        return cloudDocument.data;
-    },
-
-    async buildCloudDocument(text, config) {
-        const encrypted = await this.encryptPayload(text, config);
-        if (this.getCryptoVersion(config) >= 2) {
-            return {
-                data: this.encrypt(text, config.pairingKey),
-                secureData: encrypted,
-                cryptoVersion: 2
-            };
-        }
-        return { data: encrypted };
-    },
-
     encrypt(text, key) {
         const textToBytes = new TextEncoder().encode(text);
         const keyBytes = new TextEncoder().encode(key);
@@ -347,13 +267,11 @@ function checkForRemoteRefreshRequestBG() {
             }
         })
         .then(r => r.ok ? r.json() : null)
-        .then(async data => {
+        .then(data => {
             if (!data || !data.data) return;
             let decryptedData;
             try {
-                const payload = CryptoSync.getPayload(data, config);
-                if (!payload) return;
-                decryptedData = JSON.parse(await CryptoSync.decryptPayload(payload, config));
+                decryptedData = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
             } catch (e) {
                 logSync(`[Remote Poll BG] decrypt mislukt: ${e.message || e}`);
                 return;
@@ -404,7 +322,7 @@ function triggerScrapeFromBackground(provider) {
 }
 
 function resetRemoteRefreshRequestFlagBG(config) {
-    chrome.storage.local.get(["lt_users", "lt_current_user"], async (res) => {
+    chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
         const user = (res.lt_users || {})[res.lt_current_user];
         if (!user) return;
         const dataToUpload = {
@@ -415,24 +333,18 @@ function resetRemoteRefreshRequestFlagBG(config) {
             refreshRequested: false,
             refreshRequestedAt: null
         };
-        let cloudDocument;
-        try {
-            cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(dataToUpload), config);
-        } catch (err) {
-            logSync(`[Remote Poll BG] reset encryptie mislukt: ${err.message || err}`);
-            return;
-        }
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
         fetch(`https://api.npoint.io/${config.binId}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cloudDocument)
+            body: JSON.stringify({ data: encryptedStr })
         }).catch(() => {});
     });
 }
 
 function pushUserDataToCloud(user) {
     return new Promise((resolve, reject) => {
-        chrome.storage.local.get(["lt_sync_config"], async (res) => {
+        chrome.storage.local.get(["lt_sync_config"], (res) => {
             const config = res.lt_sync_config;
             if (!config || !config.enabled || !config.binId || !config.pairingKey) {
                 logSync("[Cloud Sync] Overslaan: Geen actieve mobiele koppeling ingesteld.");
@@ -451,21 +363,14 @@ function pushUserDataToCloud(user) {
                 refreshRequestedAt: null
             };
             
-            let cloudDocument;
-            try {
-                cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(dataToUpload), config);
-            } catch (err) {
-                logSync(`[Cloud Sync FOUT] Encryptie mislukt: ${err.message || err}`);
-                resolve();
-                return;
-            }
+            const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
             
             fetch(`https://api.npoint.io/${config.binId}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json"
                 },
-                body: JSON.stringify(cloudDocument)
+                body: JSON.stringify({ data: encryptedStr })
             })
             .then(res => {
                 if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);

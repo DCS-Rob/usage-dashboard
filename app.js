@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.1";
+const APP_VERSION = "0.7.2";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie

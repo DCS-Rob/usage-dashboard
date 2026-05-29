@@ -18,6 +18,16 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.7.2] — 2026-05-29
+
+### Opgelost
+- **Mobiel "sync mislukt"**: de 0.8.0-beta.1 secure-pairing-code was in 0.7.1 maar deels teruggedraaid (alleen `app.js`/`manifest.json`/`index.html`). `background.js` en `sw.js` bevatten nog de beta AES-GCM-encryptie → PC schreef versleuteld in v2-formaat terwijl de telefoon alleen XOR kon lezen.
+- `background.js` volledig teruggezet naar de stabiele XOR-`CryptoSync` (consistent met `app.js`)
+- `lib/qrcode.min.js` verwijderd + referentie uit `sw.js` ASSETS gehaald
+- Versie-bump forceert een verse Service Worker-cache op gekoppelde telefoons (oude beta-`app.js` werd anders vastgehouden onder dezelfde cachenaam)
+
+---
+
 ## [0.7.1] — 2026-05-29
 
 ### Opgelost
