@@ -238,24 +238,33 @@ const CryptoSync = {
    read(binId) -> doc|null, write(binId, doc). De provider wordt uit de
    sync-config gelezen (config.provider), met npoint als veilige standaard.
    ========================================================================== */
+function relayAttempt(fn, attempts = 3, delayMs = 700) {
+    return fn().catch(err => {
+        if (attempts <= 1) throw err;
+        return new Promise(r => setTimeout(r, delayMs)).then(() => relayAttempt(fn, attempts - 1, delayMs));
+    });
+}
+
 const SYNC_PROVIDERS = {
     npoint: {
         id: "npoint",
         read(binId) {
-            return fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
+            // 3 pogingen; pas als álle falen -> null.
+            return relayAttempt(() => fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
                 cache: "no-store",
                 headers: {
                     "Cache-Control": "no-cache, no-store, must-revalidate",
                     "Pragma": "no-cache"
                 }
-            }).then(r => (r.ok ? r.json() : null));
+            }).then(r => { if (!r.ok) throw new Error("relay " + r.status); return r.json(); }))
+            .catch(() => null);
         },
         write(binId, doc) {
-            return fetch(`https://api.npoint.io/${binId}`, {
+            return relayAttempt(() => fetch(`https://api.npoint.io/${binId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(doc)
-            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; });
+            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; }));
         }
     }
     // firebase: { ... }  ← wordt later toegevoegd

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.4";
+const APP_VERSION = "0.7.5";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -1868,35 +1868,45 @@ const CryptoSync = {
    primitieven: createBin(doc) -> binId, read(binId) -> doc|null, write(binId, doc).
    Een "doc" is altijd het cloud-object { data: <versleutelde string>, ... }.
    ========================================================================== */
+// Probeert een relay-bewerking tot een paar keer met korte pauzes; vangt
+// tijdelijke haperingen op (npoint laat onder belasting soms een verzoek vallen).
+function relayAttempt(fn, attempts = 3, delayMs = 700) {
+    return fn().catch(err => {
+        if (attempts <= 1) throw err;
+        return new Promise(r => setTimeout(r, delayMs)).then(() => relayAttempt(fn, attempts - 1, delayMs));
+    });
+}
+
 const SYNC_PROVIDERS = {
     npoint: {
         id: "npoint",
         label: "Standaard · npoint.io (werkt overal)",
         createBin(doc) {
-            return fetch("https://www.npoint.io/documents", {
+            return relayAttempt(() => fetch("https://www.npoint.io/documents", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ contents: JSON.stringify(doc) })
-            })
-            .then(res => { if (!res.ok) throw new Error("Fout bij initialiseren van cloud bin."); return res.json(); })
+            }).then(res => { if (!res.ok) throw new Error("Fout bij initialiseren van cloud bin."); return res.json(); }))
             .then(resData => resData.token);
         },
         read(binId) {
-            return fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
+            // 3 pogingen; pas als álle falen -> null (callers handelen null af).
+            return relayAttempt(() => fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
                 cache: "no-store",
                 headers: {
                     "Cache-Control": "no-cache, no-store, must-revalidate",
                     "Pragma": "no-cache",
                     "Expires": "0"
                 }
-            }).then(res => (res.ok ? res.json() : null));
+            }).then(res => { if (!res.ok) throw new Error("relay " + res.status); return res.json(); }))
+            .catch(() => null);
         },
         write(binId, doc) {
-            return fetch(`https://api.npoint.io/${binId}`, {
+            return relayAttempt(() => fetch(`https://api.npoint.io/${binId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(doc)
-            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; });
+            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; }));
         }
     }
     // firebase: { ... }  ← wordt later toegevoegd (snellere realtime backend)
@@ -2012,9 +2022,19 @@ function triggerSyncRetry() {
 }
 
 // Phone client: request PC to execute scraping remotely by writing trigger flag to Cloud Bin
+let remoteRefreshInFlight = false;
 function requestRemoteRefresh() {
     const syncClient = isSyncClient();
     if (!syncClient || !syncClient.binId || !syncClient.pairingKey) return;
+
+    // Voorkom een burst: negeer extra klikken zolang een trigger nog loopt
+    // (de "Ververs"- en "Sync"-knoppen doen hetzelfde — dubbel klikken
+    // overbelaadt anders de relay en veroorzaakt "geen gecodeerde data").
+    if (remoteRefreshInFlight) {
+        showToast(`<i class="fa-solid fa-hourglass-half"></i> Synchronisatie loopt al…`);
+        return;
+    }
+    remoteRefreshInFlight = true;
 
     showToast(`<i class="fa-solid fa-signal fa-fade"></i> PC-synchronisatie op afstand aanvragen...`);
 
@@ -2067,10 +2087,12 @@ function requestRemoteRefresh() {
                     showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC-scrapers geactiveerd op afstand! Scrapen loopt...`);
                 }
                 // 5b. Start fast polling ongeacht verificatie
+                remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
                 startFastPollingForRemoteSync(baseline);
             });
     })
     .catch(err => {
+        remoteRefreshInFlight = false;
         console.error("[USAGE DASHBOARD Remote Scrape] Failed:", err);
         showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Afstands-trigger mislukt.`);
     });

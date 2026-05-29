@@ -18,6 +18,15 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.7.5] — 2026-05-29
+
+### Opgelost / verbeterd
+- **Stabielere sync**: tijdelijke haperingen van de npoint-relay gaven "sync mislukt — geen gecodeerde data gevonden" en "Afstands-trigger mislukt". De provider (`read`/`write`/`createBin`) probeert een mislukt verzoek nu stil tot 3× (700ms ertussen) vóór het een fout toont.
+- **Guard tegen dubbel-triggeren**: de knoppen "Ververs" en "Sync" doen hetzelfde (`loadCloudUserData` + `requestRemoteRefresh`). Snel achter elkaar klikken vuurde een burst van ~6 verzoeken af waardoor de gratis bin er één liet vallen. Een `remoteRefreshInFlight`-vlag negeert nu extra triggers tot de lopende klaar is (en reset netjes na afloop).
+- End-to-end getest: dubbele trigger wordt correct genegeerd, `refreshRequested` wordt betrouwbaar weggeschreven, vlag blijft niet hangen.
+
+---
+
 ## [0.7.4] — 2026-05-29
 
 ### Toegevoegd
