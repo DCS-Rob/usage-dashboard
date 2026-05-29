@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.2";
+const APP_VERSION = "0.7.3";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -263,54 +263,20 @@ function isSyncClient() {
     }
 }
 
-function parsePairingParams(rawValue) {
-    if (!rawValue) return null;
-    const candidates = [];
-    const value = String(rawValue).trim();
-
-    try {
-        const url = new URL(value);
-        if (url.search) candidates.push(url.search.slice(1));
-        if (url.hash) candidates.push(url.hash.slice(1));
-    } catch (e) {
-        const hashIndex = value.indexOf("#");
-        const queryIndex = value.indexOf("?");
-        if (hashIndex >= 0) candidates.push(value.slice(hashIndex + 1));
-        if (queryIndex >= 0) candidates.push(value.slice(queryIndex + 1));
-        candidates.push(value.replace(/^[?#]/, ""));
-    }
-
-    for (const candidate of candidates) {
-        const clean = candidate.replace(/^\//, "").replace(/^\?/, "");
-        const params = new URLSearchParams(clean);
-        const key = params.get("key");
-        const bin = params.get("bin");
-        if (key && bin) {
-            return {
-                pairingKey: key,
-                binId: bin,
-                enabled: true
-            };
-        }
-    }
-    return null;
-}
-
-function getPairingConfigFromLocation() {
-    return parsePairingParams(window.location.hash) || parsePairingParams(window.location.search);
-}
-
-function persistMobileClientConfig(config) {
-    localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
-    CookieStorage.set("lt_sync_client_config", config);
-}
-
 function initApp() {
     // 1. Check for sync parameters in URL (for mobile pairing link)
-    const pairingConfig = getPairingConfigFromLocation();
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlKey = urlParams.get("key");
+    const urlBin = urlParams.get("bin");
 
-    if (pairingConfig) {
-        persistMobileClientConfig(pairingConfig);
+    if (urlKey && urlBin) {
+        const config = {
+            pairingKey: urlKey,
+            binId: urlBin,
+            enabled: true
+        };
+        localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
+        CookieStorage.set("lt_sync_client_config", config);
         
         // Clean URL parameters for a clean experience
         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
@@ -1432,15 +1398,36 @@ function setupEventListeners() {
                 return;
             }
             try {
-                const config = parsePairingParams(urlVal);
-                if (config) {
-                    persistMobileClientConfig(config);
+                // Try parsing as full URL first
+                let key = null;
+                let bin = null;
+                
+                if (urlVal.startsWith("http://") || urlVal.startsWith("https://")) {
+                    const url = new URL(urlVal);
+                    key = url.searchParams.get("key");
+                    bin = url.searchParams.get("bin");
+                } else {
+                    // Try parsing as parameters query string directly
+                    const urlParams = new URLSearchParams(urlVal.includes("?") ? urlVal.split("?")[1] : urlVal);
+                    key = urlParams.get("key");
+                    bin = urlParams.get("bin");
+                }
+                
+                if (key && bin) {
+                    const config = {
+                        pairingKey: key,
+                        binId: bin,
+                        enabled: true
+                    };
+                    localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
+                    CookieStorage.set("lt_sync_client_config", config);
+                    
                     showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Koppelgegevens succesvol opgeslagen!`);
                     setTimeout(() => {
                         window.location.reload();
                     }, 1200);
                 } else {
-                    alert("De ingevoerde URL is ongeldig. Zorg ervoor dat 'key' en 'bin' in de koppeling staan.");
+                    alert("De ingevoerde URL is ongeldig. Zorg ervoor dat 'key' en 'bin' in de parameters staan.");
                 }
             } catch (err) {
                 alert("Ongeldige invoer. Plak de volledige URL die op de desktop wordt weergegeven.");
@@ -1912,11 +1899,10 @@ function loadCloudUserData(isManual = false) {
             if (!res.ok) throw new Error("Fout bij ophalen van sync data.");
             return res.json();
         })
-        .then(async data => {
-            const payload = CryptoSync.getPayload(data, syncClient);
-            if (!payload) throw new Error("Geen gecodeerde data gevonden.");
+        .then(data => {
+            if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
             
-            const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
+            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
             const decryptedData = JSON.parse(decryptedStr);
             
             state.userLogs = decryptedData.logs || [];
@@ -2002,12 +1988,11 @@ function requestRemoteRefresh() {
         if (!res.ok) throw new Error("Fout bij ophalen huidige sync data.");
         return res.json();
     })
-    .then(async data => {
-        const payload = CryptoSync.getPayload(data, syncClient);
-        if (!payload) throw new Error("Geen gecodeerde data gevonden.");
+    .then(data => {
+        if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
 
         // 2. Decrypt
-        const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
+        const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
         const decryptedData = JSON.parse(decryptedStr);
 
         // Bewaar baseline timestamps — fast-poll gebruikt deze om écht-verse data
@@ -2024,14 +2009,14 @@ function requestRemoteRefresh() {
         decryptedData.refreshRequestedAt = Date.now();
 
         // 4. Encrypt and POST it back to the bin
-        const cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(decryptedData), syncClient);
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(decryptedData), syncClient.pairingKey);
 
         return fetch(`https://api.npoint.io/${syncClient.binId}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(cloudDocument)
+            body: JSON.stringify({ data: encryptedStr })
         }).then(res => ({ res, baseline }));
     })
     .then(({ res, baseline }) => {
@@ -2045,11 +2030,10 @@ function requestRemoteRefresh() {
                 headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" }
             }))
             .then(r => r.json())
-            .then(async verify => {
+            .then(verify => {
                 let verified = false;
                 try {
-                    const verifyPayload = CryptoSync.getPayload(verify, syncClient);
-                    const dec = JSON.parse(await CryptoSync.decryptPayload(verifyPayload, syncClient));
+                    const dec = JSON.parse(CryptoSync.decrypt(verify.data, syncClient.pairingKey));
                     verified = dec.refreshRequested === true;
                     console.log("[USAGE DASHBOARD Phone] Verificatie:", verified ? "OK (flag staat true in bin)" : "FAIL (flag niet zichtbaar)", dec);
                 } catch (e) {
@@ -2119,9 +2103,8 @@ function startFastPollingForRemoteSync(baseline) {
             }
         })
         .then(res => res.json())
-        .then(async data => {
-            const payload = CryptoSync.getPayload(data, syncClient);
-            const decryptedStr = await CryptoSync.decryptPayload(payload, syncClient);
+        .then(data => {
+            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
             const decryptedData = JSON.parse(decryptedStr);
 
             const cloudClaude = decryptedData.syncStatus?.claude?.lastSynced || 0;
@@ -2218,7 +2201,7 @@ function logSync(message) {
 function pushUserDataToCloud() {
     if (isSyncClient()) return;
     
-    DB.get(["lt_sync_config"], async (res) => {
+    DB.get(["lt_sync_config"], (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) {
             logSync("[Cloud Sync App] Overslaan: Geen actieve mobiele koppeling geconfigureerd.");
@@ -2236,20 +2219,14 @@ function pushUserDataToCloud() {
             refreshRequestedAt: null
         };
         
-        let cloudDocument;
-        try {
-            cloudDocument = await CryptoSync.buildCloudDocument(JSON.stringify(dataToUpload), config);
-        } catch (err) {
-            logSync(`[Cloud Sync App FOUT] Encryptie mislukt: ${err.message || err}`);
-            return;
-        }
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
         
         fetch(`https://api.npoint.io/${config.binId}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify(cloudDocument)
+            body: JSON.stringify({ data: encryptedStr })
         })
         .then(res => {
             if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);
@@ -2302,8 +2279,6 @@ function renderMobileSyncSettings() {
             setupActions.style.display = "block";
             activeInfo.style.display = "none";
             pairingKeyInput.value = "";
-            const qrBox = document.getElementById("sync-qrcode");
-            if (qrBox) qrBox.innerHTML = "";
         }
     });
 }
@@ -2315,19 +2290,21 @@ function generateMobileSync() {
     btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Koppelcode genereren...`;
     
     const pairingKey = "LT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-
+    
     const initialData = {
         logs: state.userLogs,
         threads: state.userThreads,
         settings: state.userSettings,
         syncStatus: state.syncStatus
     };
-
+    
     const encryptedStr = CryptoSync.encrypt(JSON.stringify(initialData), pairingKey);
-
+    
     fetch("https://www.npoint.io/documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({ contents: JSON.stringify({ data: encryptedStr }) })
     })
     .then(res => {
@@ -2337,8 +2314,12 @@ function generateMobileSync() {
     .then(resData => {
         const binId = resData.token;
         
-        const syncConfig = { enabled: true, pairingKey, binId };
-
+        const syncConfig = {
+            enabled: true,
+            pairingKey: pairingKey,
+            binId: binId
+        };
+        
         DB.set({ lt_sync_config: syncConfig }, () => {
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;

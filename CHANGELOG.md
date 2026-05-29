@@ -18,6 +18,17 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.7.3] — 2026-05-29
+
+### Opgelost
+- **Mobiel "sync mislukt" / "Afstands-trigger mislukt"**: in 0.7.2 was het `CryptoSync`-object in `app.js` teruggezet naar XOR, maar de client-side sync-functies **riepen nog de verwijderde beta-methods aan** (`getPayload`, `decryptPayload`, `buildCloudDocument`) → `is not a function`-crash bij elke sync en remote-trigger.
+- `app.js` volledig teruggezet naar de stabiele staat (commit 40ddf0f): oude XOR-sync-flow, `?key=&bin=` koppel-URL, qrserver-QR — mét behoud van de GitHub Pages host-configuratie.
+- `app.js` en `background.js` komen nu uit dezelfde schone lijn → gegarandeerd consistente encryptie.
+- `node --check` geslaagd op `app.js`, `background.js` en `content.js`.
+- Versie-bump forceert opnieuw een verse Service Worker-cache op telefoons (de kapotte 0.7.2 was al gedeployed onder zijn eigen cachenaam).
+
+---
+
 ## [0.7.2] — 2026-05-29
 
 ### Opgelost
