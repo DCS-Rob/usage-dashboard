@@ -18,6 +18,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.7.4] — 2026-05-29
+
+### Toegevoegd
+- **Sync-provider abstractielaag** (`SYNC_PROVIDERS`) in `app.js` én `background.js`: alle cloud-operaties (`createBin`/`read`/`write`) lopen nu via één provider-interface, zodat er later een snellere backend (Firebase) náást npoint kan komen zonder de sync-logica te herschrijven.
+- `provider`-veld in de sync-config + in de koppel-URL (`&provider=`), met npoint als veilige standaard. Bestaande koppelingen zonder dit veld vallen automatisch terug op npoint (volledig backward-compatible).
+- Verbindings-selector in Instellingen → Mobiele Synchronisatie: "Standaard (npoint)" actief, "Firebase (sneller)" alvast zichtbaar maar uitgeschakeld tot die is ingericht.
+
+### Ongewijzigd gedrag
+- npoint blijft de standaard en enige actieve route — de sync werkt exact zoals in 0.7.3, alleen nu achter de provider-laag. End-to-end getest (koppelcode genereren + telefoon-client uitlezen).
+
+---
+
 ## [0.7.3] — 2026-05-29
 
 ### Opgelost

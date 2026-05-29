@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.3";
+const APP_VERSION = "0.7.4";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -268,11 +268,13 @@ function initApp() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlKey = urlParams.get("key");
     const urlBin = urlParams.get("bin");
+    const urlProvider = urlParams.get("provider") || "npoint";
 
     if (urlKey && urlBin) {
         const config = {
             pairingKey: urlKey,
             binId: urlBin,
+            provider: urlProvider,
             enabled: true
         };
         localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
@@ -1858,6 +1860,58 @@ const CryptoSync = {
     }
 };
 
+/* ==========================================================================
+   SYNC PROVIDER ABSTRACTIE
+   Alle cloud-lees/schrijf/aanmaak-operaties lopen via één provider-interface,
+   zodat er later een snellere backend (bv. Firebase) naast npoint kan komen
+   zonder de sync-logica te herschrijven. Elke provider levert dezelfde 3
+   primitieven: createBin(doc) -> binId, read(binId) -> doc|null, write(binId, doc).
+   Een "doc" is altijd het cloud-object { data: <versleutelde string>, ... }.
+   ========================================================================== */
+const SYNC_PROVIDERS = {
+    npoint: {
+        id: "npoint",
+        label: "Standaard · npoint.io (werkt overal)",
+        createBin(doc) {
+            return fetch("https://www.npoint.io/documents", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contents: JSON.stringify(doc) })
+            })
+            .then(res => { if (!res.ok) throw new Error("Fout bij initialiseren van cloud bin."); return res.json(); })
+            .then(resData => resData.token);
+        },
+        read(binId) {
+            return fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            }).then(res => (res.ok ? res.json() : null));
+        },
+        write(binId, doc) {
+            return fetch(`https://api.npoint.io/${binId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(doc)
+            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; });
+        }
+    }
+    // firebase: { ... }  ← wordt later toegevoegd (snellere realtime backend)
+};
+
+// Standaard provider als er (nog) geen keuze in de config staat → npoint.
+// Onbekende/legacy waarden vallen veilig terug op npoint.
+function resolveSyncProviderId(config) {
+    const id = config && config.provider;
+    return (id && SYNC_PROVIDERS[id]) ? id : "npoint";
+}
+function syncRelay(config) {
+    return SYNC_PROVIDERS[resolveSyncProviderId(config)];
+}
+
 let lastSyncTime = null;
 let retryCount = 0;
 let retryTimeoutId = null;
@@ -1887,24 +1941,13 @@ function loadCloudUserData(isManual = false) {
         if (icon) icon.classList.add("fa-spin");
     }
     
-    fetch(`https://api.npoint.io/${syncClient.binId}?nocache=${Date.now()}`, {
-        cache: "no-store",
-        headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    })
-        .then(res => {
-            if (!res.ok) throw new Error("Fout bij ophalen van sync data.");
-            return res.json();
-        })
+    syncRelay(syncClient).read(syncClient.binId)
         .then(data => {
-            if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
-            
+            if (!data || !data.data) throw new Error("Geen gecodeerde data gevonden.");
+
             const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
             const decryptedData = JSON.parse(decryptedStr);
-            
+
             state.userLogs = decryptedData.logs || [];
             state.userThreads = decryptedData.threads || [];
             state.userSettings = decryptedData.settings || state.userSettings;
@@ -1976,20 +2019,9 @@ function requestRemoteRefresh() {
     showToast(`<i class="fa-solid fa-signal fa-fade"></i> PC-synchronisatie op afstand aanvragen...`);
 
     // 1. Fetch current cloud data first
-    fetch(`https://api.npoint.io/${syncClient.binId}?nocache=${Date.now()}`, {
-        cache: "no-store",
-        headers: {
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    })
-    .then(res => {
-        if (!res.ok) throw new Error("Fout bij ophalen huidige sync data.");
-        return res.json();
-    })
+    syncRelay(syncClient).read(syncClient.binId)
     .then(data => {
-        if (!data.data) throw new Error("Geen gecodeerde data gevonden.");
+        if (!data || !data.data) throw new Error("Geen gecodeerde data gevonden.");
 
         // 2. Decrypt
         const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
@@ -2008,29 +2040,19 @@ function requestRemoteRefresh() {
         decryptedData.refreshRequested = true;
         decryptedData.refreshRequestedAt = Date.now();
 
-        // 4. Encrypt and POST it back to the bin
+        // 4. Encrypt and write it back to the bin
         const encryptedStr = CryptoSync.encrypt(JSON.stringify(decryptedData), syncClient.pairingKey);
 
-        return fetch(`https://api.npoint.io/${syncClient.binId}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ data: encryptedStr })
-        }).then(res => ({ res, baseline }));
+        return syncRelay(syncClient).write(syncClient.binId, { data: encryptedStr }).then(() => baseline);
     })
-    .then(({ res, baseline }) => {
-        if (!res.ok) throw new Error("POST upload mislukt.");
+    .then((baseline) => {
         console.log("[USAGE DASHBOARD Phone] POST refreshRequested:true verstuurd, verifieren...");
 
-        // 5a. Verifieer dat npoint onze write daadwerkelijk teruggeeft.
+        // 5a. Verifieer dat de relay onze write daadwerkelijk teruggeeft.
         return new Promise(resolve => setTimeout(resolve, 800))
-            .then(() => fetch(`https://api.npoint.io/${syncClient.binId}?nocache=${Date.now()}`, {
-                cache: "no-store",
-                headers: { "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache" }
-            }))
-            .then(r => r.json())
+            .then(() => syncRelay(syncClient).read(syncClient.binId))
             .then(verify => {
+                verify = verify || {};
                 let verified = false;
                 try {
                     const dec = JSON.parse(CryptoSync.decrypt(verify.data, syncClient.pairingKey));
@@ -2095,15 +2117,9 @@ function startFastPollingForRemoteSync(baseline) {
         }
 
         const syncClient = isSyncClient();
-        fetch(`https://api.npoint.io/${syncClient.binId}?nocache=${Date.now()}`, {
-            cache: "no-store",
-            headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache"
-            }
-        })
-        .then(res => res.json())
+        syncRelay(syncClient).read(syncClient.binId)
         .then(data => {
+            if (!data || !data.data) return;
             const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
             const decryptedData = JSON.parse(decryptedStr);
 
@@ -2220,16 +2236,9 @@ function pushUserDataToCloud() {
         };
         
         const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
-        
-        fetch(`https://api.npoint.io/${config.binId}`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ data: encryptedStr })
-        })
-        .then(res => {
-            if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);
+
+        syncRelay(config).write(config.binId, { data: encryptedStr })
+        .then(() => {
             logSync(`[Cloud Sync App] Gegevens succesvol geüpload naar cloud sync (bin: ${config.binId})!`);
         })
         .catch(err => {
@@ -2263,7 +2272,8 @@ function renderMobileSyncSettings() {
 
             // Configureerbare host (default = publieke GitHub Pages). Strip trailing slashes.
             const hostUrl = (res.lt_pwa_host || DEFAULT_PWA_HOST).replace(/\/+$/, "");
-            const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}`;
+            const providerParam = (config.provider && config.provider !== "npoint") ? `&provider=${config.provider}` : "";
+            const fullPwaUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}${providerParam}`;
             pwaLink.href = fullPwaUrl;
             const hostLabel = hostUrl.replace(/^https?:\/\//, "");
             pwaLink.innerHTML = `${hostLabel} <i class="fa-solid fa-up-right-from-square"></i>`;
@@ -2299,27 +2309,20 @@ function generateMobileSync() {
     };
     
     const encryptedStr = CryptoSync.encrypt(JSON.stringify(initialData), pairingKey);
-    
-    fetch("https://www.npoint.io/documents", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ contents: JSON.stringify({ data: encryptedStr }) })
-    })
-    .then(res => {
-        if (!res.ok) throw new Error("Fout bij initialiseren van cloud bin.");
-        return res.json();
-    })
-    .then(resData => {
-        const binId = resData.token;
-        
+
+    // Lees de gekozen provider uit de selector (default = npoint).
+    const providerSelect = document.getElementById("sync-provider-select");
+    const providerId = (providerSelect && SYNC_PROVIDERS[providerSelect.value]) ? providerSelect.value : "npoint";
+
+    SYNC_PROVIDERS[providerId].createBin({ data: encryptedStr })
+    .then(binId => {
         const syncConfig = {
             enabled: true,
             pairingKey: pairingKey,
-            binId: binId
+            binId: binId,
+            provider: providerId
         };
-        
+
         DB.set({ lt_sync_config: syncConfig }, () => {
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;

@@ -233,6 +233,38 @@ const CryptoSync = {
     }
 };
 
+/* ==========================================================================
+   SYNC PROVIDER ABSTRACTIE (spiegelt app.js)
+   read(binId) -> doc|null, write(binId, doc). De provider wordt uit de
+   sync-config gelezen (config.provider), met npoint als veilige standaard.
+   ========================================================================== */
+const SYNC_PROVIDERS = {
+    npoint: {
+        id: "npoint",
+        read(binId) {
+            return fetch(`https://api.npoint.io/${binId}?nocache=${Date.now()}`, {
+                cache: "no-store",
+                headers: {
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache"
+                }
+            }).then(r => (r.ok ? r.json() : null));
+        },
+        write(binId, doc) {
+            return fetch(`https://api.npoint.io/${binId}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(doc)
+            }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; });
+        }
+    }
+    // firebase: { ... }  ← wordt later toegevoegd
+};
+function syncRelay(config) {
+    const id = (config && config.provider && SYNC_PROVIDERS[config.provider]) ? config.provider : "npoint";
+    return SYNC_PROVIDERS[id];
+}
+
 function logSync(message) {
     console.log("[USAGE DASHBOARD Background Sync Log]", message);
     chrome.storage.local.get(["lt_sync_logs"], (res) => {
@@ -259,14 +291,7 @@ function checkForRemoteRefreshRequestBG() {
         const lastTrigger = res.lt_last_bg_scrape || 0;
         if (Date.now() - lastTrigger < 90000) return;
 
-        fetch(`https://api.npoint.io/${config.binId}?nocache=${Date.now()}`, {
-            cache: "no-store",
-            headers: {
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache"
-            }
-        })
-        .then(r => r.ok ? r.json() : null)
+        syncRelay(config).read(config.binId)
         .then(data => {
             if (!data || !data.data) return;
             let decryptedData;
@@ -334,11 +359,7 @@ function resetRemoteRefreshRequestFlagBG(config) {
             refreshRequestedAt: null
         };
         const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
-        fetch(`https://api.npoint.io/${config.binId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: encryptedStr })
-        }).catch(() => {});
+        syncRelay(config).write(config.binId, { data: encryptedStr }).catch(() => {});
     });
 }
 
@@ -364,16 +385,9 @@ function pushUserDataToCloud(user) {
             };
             
             const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
-            
-            fetch(`https://api.npoint.io/${config.binId}`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ data: encryptedStr })
-            })
-            .then(res => {
-                if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`);
+
+            syncRelay(config).write(config.binId, { data: encryptedStr })
+            .then(() => {
                 logSync(`[Cloud Sync] Gegevens succesvol geüpload naar cloud sync (bin: ${config.binId})!`);
                 resolve();
             })

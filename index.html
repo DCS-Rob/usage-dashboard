@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js voor Analytics (lokaal gebundeld — CDN geblokkeerd door MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.7.3">
+    <link rel="stylesheet" href="style.css?v=0.7.4">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -611,6 +611,14 @@
                                     
                                     <div id="sync-setup-actions">
                                         <p class="desc mb-3">Klik op de knop om een unieke, beveiligde koppelcode te genereren en cloud-synchronisatie in te schakelen.</p>
+                                        <div class="form-group" style="margin-bottom: 12px; text-align: left;">
+                                            <label for="sync-provider-select" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-bolt" style="color: var(--color-gemini);"></i> Verbinding</label>
+                                            <select id="sync-provider-select" style="font-size: 0.82rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 9px 10px; box-sizing: border-box;">
+                                                <option value="npoint" selected>Standaard &middot; werkt overal (iets trager)</option>
+                                                <option value="firebase" disabled>Firebase &middot; sneller &mdash; nog niet ingesteld</option>
+                                            </select>
+                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">De standaardverbinding werkt voor iedereen zonder installatie. De snelle Firebase-optie komt later.</p>
+                                        </div>
                                         <button type="button" id="btn-generate-sync" class="btn-primary w-100">
                                             <i class="fa-solid fa-key"></i> Genereer Koppelcode
                                         </button>
@@ -695,6 +703,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.7.3"></script>
+    <script src="app.js?v=0.7.4"></script>
 </body>
 </html>
