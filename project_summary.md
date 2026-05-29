@@ -78,8 +78,9 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
    - Dashboard UI (`index.html`) toont limieten, grafieken, instellingen
 
 2. **PWA (Telefoon)** — dezelfde `app.js`/`index.html`/`style.css`, gehost op:
-   - **agents-controller**: `https://agents-controller.tail00aec2.ts.net:9000` (vereist Tailscale op telefoon)
-   - Auto-update via systemd timer: elke 5 minuten `git pull` + service restart
+   - **GitHub Pages (default, publiek)**: `https://dcs-rob.github.io/usage-dashboard/` — werkt op elke telefoon zónder Tailscale. Auto-deploy via `.github/workflows/pages.yml` bij elke push naar `main`.
+   - **agents-controller (optioneel, privé)**: `https://agents-controller.tail00aec2.ts.net:9000` (vereist Tailscale op telefoon). Auto-update via systemd timer: elke 5 minuten `git pull` + service restart.
+   - De host is per gebruiker instelbaar in Instellingen → Mobiele Synchronisatie (opgeslagen onder `lt_pwa_host`); leeg veld = GitHub Pages.
 
 3. **Cloud Sync** — `https://api.npoint.io/<binId>`
    - Gratis JSON bin, E2E versleuteld via XOR cipher
@@ -116,6 +117,7 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 | `bump-version.ps1` | Script | Werkt alle versienummers bij in één keer |
 | `CHANGELOG.md` | Documentatie | Versiegeschiedenis |
 | `.github/workflows/release.yml` | CI/CD | Maakt automatisch GitHub Release bij tag push |
+| `.github/workflows/pages.yml` | CI/CD | Deployt de PWA naar GitHub Pages bij push naar `main` |
 
 ---
 
@@ -128,11 +130,18 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 - Privésleutel bewaard op: `G:\Gedeelde drives\DiederenCS - LXDG\Diederen CS\Antigravity\usage-dashboard-extension.key.pem`
 - **Update:** `chrome://extensions → Reload knop` (handmatig na elke versie-bump)
 
-### PWA (agents-controller)
+### PWA — publieke host (GitHub Pages, default)
+- Auto-deploy via `.github/workflows/pages.yml` naar `https://dcs-rob.github.io/usage-dashboard/`
+- Publiceert **alleen** de PWA-bestanden (index.html, app.js, style.css, sw.js, manifest.webmanifest, assets/, lib/) — geen extensie-manifest, background.js of content.js
+- Veilig omdat de data E2E-versleuteld in npoint.io staat; zonder `pairingKey` (alleen via QR naar de eigen telefoon) valt er niets te lezen
+- Pages-bron staat op "GitHub Actions": `gh api -X PUT repos/DCS-Rob/usage-dashboard/pages -f build_type=workflow`
+
+### PWA — privé host (agents-controller, optioneel)
 - Node.js static file server op poort 9000 (`/home/agents/Repositories/usage-dashboard/serve.js`)
 - Bereikbaar via Tailscale HTTPS: `https://agents-controller.tail00aec2.ts.net:9000`
 - **Auto-update:** systemd timer checkt elke 5 min op nieuwe GitHub commits → `git pull` + service restart
 - Service: `usage-dashboard.service` + `usage-dashboard-autoupdate.timer`
+- Invullen in het PWA-host-veld op het dashboard om voor je eigen telefoon te gebruiken
 
 ### GitHub
 - Repo: `https://github.com/DCS-Rob/usage-dashboard` (publiek)
@@ -158,6 +167,9 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.7.0** | 2026-05-29 | Publieke mobiele hosting via GitHub Pages (`dcs-rob.github.io/usage-dashboard`) + configureerbare PWA-host. webmanifest icon-pad + scope fix. |
+| **0.6.6** | 2026-05-29 | Claude wekelijkse resettimer: NL "u" (uur)-parsing, dagnaam-lookup, en tomorrow/today + "Herstelt over" formaten toegevoegd. |
+| **0.6.5** | 2026-05-26 | Codex/ChatGPT oneindige reload-lus opgelost (`window.location.reload()` verwijderd uit content.js). |
 | **0.6.4** | 2026-05-26 | Dubbele ChatGPT-tab refreshes opgelost (dashboard-poller verwijderd, alleen background alarm). MV3 CSP-fouten opgelost (inline handlers → app.js, Chart.js lokaal). broadcastStateUpdate .catch() fix. |
 | **0.6.3** | 2026-05-25 | Netlify volledig verwijderd. bump-version.ps1 script. GitHub Releases via tags. CHANGELOG.md aangemaakt. |
 | **0.6.2** | 2026-05-24 | "Onthoud mij" auto-login. Vaste extensie-ID via manifest key. PWA op agents-controller (Tailscale). Host-selector mobiele sync. |
