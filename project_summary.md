@@ -114,6 +114,7 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 | `sw.js` | Service Worker | PWA cache (stale-while-revalidate) |
 | `manifest.webmanifest` | PWA manifest | Installeerbaar als app op telefoon |
 | `lib/chart.min.js` | Bibliotheek | Chart.js lokaal gebundeld (CDN geblokkeerd door MV3) |
+| `lib/qrcode.min.js` | Bibliotheek | Lokale QR-code generatie voor mobiele pairing (geen externe QR-provider) |
 | `bump-version.ps1` | Script | Werkt alle versienummers bij in één keer |
 | `CHANGELOG.md` | Documentatie | Versiegeschiedenis |
 | `.github/workflows/release.yml` | CI/CD | Maakt automatisch GitHub Release bij tag push |
@@ -167,6 +168,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.8.0-beta.1** | 2026-05-29 | Beta veilige pairing: 256-bit `LT2` keys, URL-fragment pairing, lokale QR-generatie, AES-GCM `secureData` met legacy rollback-fallback. |
 | **0.7.0** | 2026-05-29 | Publieke mobiele hosting via GitHub Pages (`dcs-rob.github.io/usage-dashboard`) + configureerbare PWA-host. webmanifest icon-pad + scope fix. |
 | **0.6.6** | 2026-05-29 | Claude wekelijkse resettimer: NL "u" (uur)-parsing, dagnaam-lookup, en tomorrow/today + "Herstelt over" formaten toegevoegd. |
 | **0.6.5** | 2026-05-26 | Codex/ChatGPT oneindige reload-lus opgelost (`window.location.reload()` verwijderd uit content.js). |
