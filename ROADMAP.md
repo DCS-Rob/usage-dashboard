@@ -4,6 +4,12 @@ Forward-looking plan. Bevat visie, het kerninzicht dat de architectuur bepaalt,
 haalbaarheid (wat wel/niet kan), de gekozen richting en een gefaseerde uitwerking.
 Dit document is leidend voor de grote update; details kunnen per fase bijgesteld worden.
 
+> **Stand van zaken (v0.16.0):** Fase 1 is grotendeels gerealiseerd — Firebase-fundament,
+> multi-account via Chrome-profielen, profiel toevoegen/hernoemen/verwijderen, kaart per
+> (profiel × abonnement), blokken tonen/verbergen (globaal + per profiel) en Codex als
+> eigen blok. Nog open binnen Fase 1: drag-to-reorder van kaarten en profielgroepen.
+> Fase 2 (PWA als primaire viewer + team-delen) is deels live via GitHub Pages + invite-flow.
+
 ---
 
 ## 1. Visie
@@ -82,19 +88,21 @@ Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 
 ## 5. Gefaseerd plan
 
-### Fase 1 — Database-fundament + multi-account profielen + kaartbeheer
-- Firebase erin als opslag (naast/ter vervanging van npoint), achter de bestaande provider-laag.
-- **Profiel-model**: elke kaart = `{ id, label, provider, persoon, chromeProfileHint }`.
-- **Profiel-manager** in Settings: toevoegen/hernoemen/verwijderen; klik op provider-logo → "koppel profiel".
-- **Toggle tonen/verbergen** per kaart + **drag-to-reorden**; layout per gebruiker opgeslagen.
-- **Multi-account via Chrome-profielen**: korte handleiding + de scraper tagt data aan het gekozen profiel.
-- Werkt direct in zowel extensie als PWA (gedeelde code).
+### Fase 1 — Database-fundament + multi-account profielen + kaartbeheer  ✅ grotendeels af
+- ✅ Firebase erin als opslag (primair, npoint als fallback), achter de bestaande provider-laag.
+- ✅ **Multi-profiel**: elk Chrome-profiel pusht onder eigen `profileId`; dashboard toont één kaart per (profiel × abonnement).
+- ✅ **Profiel-beheer**: toevoegen via invite-link, hernoemen, verwijderen (✕ op de profiel-tab).
+- ✅ **Toggle tonen/verbergen** per kaart (globaal in Settings + per profiel lokaal) + auto-zichtbaarheid op basis van data.
+- ⬜ **drag-to-reorden** van kaarten — nog te doen.
+- ⬜ **Profielgroepen** ("folders"-gevoel) — nog te doen.
+- ✅ **Multi-account via Chrome-profielen**: scraper tagt data aan het ingelogde profiel.
+- ✅ Werkt in zowel extensie als PWA (gedeelde code).
 
-### Fase 2 — Dashboard-UI als primaire PWA + team-delen
-- PWA (GitHub Pages) wordt de hoofd-viewer die uit Firebase leest → gratis globale updates.
-- Extensie verdunt tot scraper (voeler) die naar Firebase schrijft.
-- **Team-delen**: anderen installeren de scraper, schrijven hun profiel(en) naar de gedeelde Firebase, verschijnen als kaarten.
-- **Per-persoon groepen** + selectie welke profielen je toont.
+### Fase 2 — Dashboard-UI als primaire PWA + team-delen  🔶 deels live
+- ✅ PWA (GitHub Pages) leest uit Firebase → gratis globale updates.
+- ✅ Auto-login extensiemodus; de extensie schrijft per profiel naar de cloud.
+- ✅ **Team-delen (basis)**: anderen accepteren een invite-link, schrijven hun profiel naar de gedeelde bin en verschijnen als kaarten.
+- ⬜ Selectie/groepen van welke profielen je toont (per-persoon groepen).
 
 ### Fase 3 — Analyse-database & inzichten
 - Historische usage per profiel/model/tijd; "waar gaat mijn/ons verbruik aan op".
@@ -116,4 +124,4 @@ Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 
 ---
 
-*Status: voorstel. Fase 1 start na akkoord + Firebase-project.*
+*Status (v0.16.0): Fase 1 grotendeels af, Fase 2 deels live. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3).*

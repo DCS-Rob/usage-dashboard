@@ -2,7 +2,7 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.13.2**
+**Huidige versie: 0.16.0**
 
 ---
 
@@ -103,10 +103,12 @@ De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub 
    - **agents-controller (optioneel, privé)**: Tailscale HTTPS poort 9000.
 
 3. **Cloud Sync** — twee providers (keuze bij aanmaken koppeling):
-   - **npoint.io** (default): gratis JSON bin, E2E XOR-versleuteld, werkt overal
-   - **Firebase Realtime Database** (sneller): `usage-dashboard-98f1d`, regio `europe-west1`, Spark free tier. REST API — geen SDK. Database URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
-   - Data-structuur in de bin: `{ profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, logs, settings, refreshRequested }`
-   - Multi-profiel: elk Chrome-profiel pusht onder zijn eigen `profileId` → dashboard aggregeert
+   - **Firebase Realtime Database** (primair, sneller): `usage-dashboard-98f1d`, regio `europe-west1`, Spark free tier. REST API — geen SDK. Database URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
+   - **npoint.io** (fallback): gratis JSON bin, werkt overal
+   - Payload is **E2E XOR-versleuteld** in het `data`-veld. Data-structuur in de bin:
+     `{ data: "<encrypted>", profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, logs, settings, refreshRequested }`
+   - `syncStatus` per profiel bevat per provider de laatste snapshot: `claude`, `chatgpt`, `codex`, `gemini`
+   - Multi-profiel: elk Chrome-profiel pusht onder zijn eigen `profileId` → dashboard toont één kaart per (profiel × abonnement)
 
 ### Multi-profiel architectuur (v0.10+)
 
@@ -121,6 +123,38 @@ Elk Chrome-profiel heeft zijn eigen `lt_profile_id` (auto-gegenereerd) en `lt_pr
 6. Als extensie **niet** geïnstalleerd is: PWA toont install-assistent met instructies + GitHub link
 
 **`externally_connectable`**: alleen `https://dcs-rob.github.io/*` mag de extensie pingen voor versie/status info (geen sync-data).
+
+### Providers & blokken (v0.14–v0.16)
+
+Het dashboard kent vier provider-blokken, elk met een eigen kleur:
+
+| Provider | Kleur | Limiet(en) | Scrape-bron |
+|----------|-------|-----------|-------------|
+| **Claude Pro** | oranje | Current Session (5h) + Weekly | `claude.ai/settings/usage` |
+| **ChatGPT Business** | groen | 5 Hour + Weekly | `chatgpt.com …/analytics` |
+| **Codex** | paars | Monthly (maandelijkse gebruikslimiet) | `chatgpt.com/codex/cloud/settings/analytics` |
+| **Gemini Advanced** | blauw | 24h Rolling (teller) | `gemini.google.com` |
+
+### Weergave-logica
+
+- **Auto-zichtbaarheid**: een blok verschijnt alleen als dat profiel er data voor heeft (`hasProviderData()`). Een vers profiel start dus met alleen de providers waar je op ingelogd bent; open je een usage-pagina, dan komt dat blok erbij. Geen Gemini-blok als je Gemini niet gebruikt.
+- **Enkel-profiel weergave**: de rijke statische cards met volledige pace-balken (Remaining Capacity + Remaining Time + reset + Veilig/Let op/Gevaar-status), gefilterd op het geselecteerde profiel. Live bijgewerkt voor het eigen apparaat (log-correctie per seconde); snapshot voor remote profielen.
+- **"All profiles" weergave**: één losse card per (profiel × abonnement) — `renderMultiProfileCards()` + `buildSnapshotCard()` — mét dezelfde volledige pace-balken. Vervangt de oude RD/P-chips.
+- **Zichtbaarheid togglen**:
+  - *Globaal* (Settings → "Visible Blocks"): harde aan/uit per provider voor het hele dashboard (`state.userSettings.visibleBlocks`, gesynchroniseerd).
+  - *Per profiel (lokaal)*: oogje-knop op elke card. Opgeslagen in `localStorage` (`lt_local_hidden`, key `"<pid>|<provider>"`) — niet gesynchroniseerd. Geldt consistent in zowel enkel-profiel als "All profiles". Herstellen via de chips bovenaan de grid.
+
+### Belangrijke functies (app.js)
+
+| Functie | Doel |
+|---------|------|
+| `renderDashboardProgress()` | Rijke statische cards (eigen apparaat / geselecteerd profiel) |
+| `renderMultiProfileCards()` | Schakelt tussen statische grid (1 profiel) en multi-grid (All) |
+| `buildSnapshotCard()` + `computeProviderPace()` | Bouwt een card per (profiel × provider) met volledige pace-secties |
+| `parseClaudeSessionTime` / `parseClaudeWeeklyTime` / `parseChatgpt5hTime` / `parseDateResetTime` | Herbruikbare reset-tijd parsers (EN+NL) voor de snapshot-cards |
+| `applyBlockVisibility()` + `hasProviderData()` + `getCurrentProfileContext()` | Auto-zichtbaarheid + verberg-logica voor de statische cards |
+| `isBlockVisible()` (globaal) / `isLocallyHidden()` (per profiel) | Zichtbaarheids-checks |
+| `normalizeUserSettings()` | Back-fill van nieuwe settings-velden (zoals `visibleBlocks`) voor oudere profielen |
 
 ---
 
@@ -143,7 +177,7 @@ Elk Chrome-profiel heeft zijn eigen `lt_profile_id` (auto-gegenereerd) en `lt_pr
 |---------|------|---------------------|
 | `manifest.json` | MV3 manifest | Permissies, extensie-ID (vaste key), versie |
 | `background.js` | Service Worker | Data verwerking, cloud push, remote refresh poller, invite-link acceptatie |
-| `content.js` | Content Script | Scraper voor claude.ai, chatgpt.com, gemini.google.com |
+| `content.js` | Content Script | Scraper voor claude.ai, chatgpt.com (5h/weekly + Codex maandlimiet), gemini.google.com |
 | `app.js` | UI Controller | Dashboard UI, dual storage (EXT/PWA), sync |
 | `index.html` | HTML | Structuur, alle inline-JS verwijderd (MV3 CSP) |
 | `style.css` | CSS | Glassmorphism UI, animaties, responsive |
@@ -204,6 +238,11 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.16.0** | 2026-06-02 | Auto-zichtbaarheid: blokken verschijnen alleen bij data (geen Gemini-blok zonder gebruik). Verberg-knop (oogje) + herstel-balk óók in enkel-profiel weergave. Per-profiel verbergen werkt consistent door in "All profiles". |
+| **0.15.1** | 2026-06-01 | Volledige pace-balken (Remaining Capacity/Time + reset + status) terug in de losse profiel-cards; providerkleuren behouden per blok. Nieuwe reset-tijd parsers. |
+| **0.15.0** | 2026-06-01 | Card per (profiel × abonnement) in de "All profiles" weergave i.p.v. RD/P-chips; per-profiel lokaal verbergen met herstel-chips. |
+| **0.14.0** | 2026-06-01 | "Visible Blocks" paneel in Settings (globaal blokken aan/uit). Codex maandlimiet als eigen paars blok (scraper + card). `normalizeUserSettings()` back-fill. |
+| **0.13.3** | 2026-06-01 | Profiel verwijderen via ✕ op profiel-tab (verwijdert uit gedeelde Firebase-doc; Chrome-profiel blijft werken). |
 | **0.13.2** | 2026-06-01 | `saveDashboardProfileName` herschreven; mobile client loading spinner + retry; cloud profiles direct laden bij extensie start; invite overlay naam-validatie; open-source commentaar PWA_INVITE_HOST. |
 | **0.13.1** | 2026-06-01 | Getting started banner + lege-staat helpers op kaarten + "Add profile" label. |
 | **0.13.0** | 2026-06-01 | Auto-login extensiemodus; geen login-scherm meer; saveProfileLabel hernoemt lt_current_user. |
@@ -237,8 +276,17 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 ## 7. Roadmap
 
-### TODO-1: Server-side scraper (langetermijn)
+Zie `ROADMAP.md` voor het volledige gefaseerde plan. Korte stand van zaken:
+
+### Kortetermijn (open binnen Fase 1/2)
+- **Drag-to-reorder** van kaarten + opgeslagen layout per gebruiker.
+- **Profielgroepen** ("folders"-gevoel) + selectie welke profielen je toont.
+
+### TODO-1: Analyse-database (Fase 3)
+Historische usage per profiel/model/tijd in Firebase, met grafieken en trends.
+
+### TODO-2: Server-side scraper (langetermijn)
 Playwright/Puppeteer headless scraper op agents-controller zodat de PC-browser niet open hoeft te staan.
 
-### TODO-2: npoint.io vervangen (langetermijn)
-Eigen JSON opslag op agents-controller via kleine REST API — geen externe afhankelijkheid meer.
+### TODO-3: npoint.io fallback uitfaseren (langetermijn)
+Firebase is nu primair; npoint kan op termijn weg of vervangen worden door eigen opslag op agents-controller.
