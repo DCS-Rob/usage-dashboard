@@ -4,6 +4,21 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.18.0] — 2026-06-02
+
+### Opgelost — KRITIEK (data-verlies)
+- **De dashboard-side cloud-upload sloeg de hele bin plat zonder `profiles{}`.** `app.js pushUserDataToCloud()` overschreef bij elke dashboard-save (zichtbaarheid togglen, settings, log-edits) de gedeelde bin en wiste daarmee de andere profielen tot hún extensie opnieuw pushte. Dit was de hoofdoorzaak van de wisselvallige sync. Nu **read-modify-write** (net als `background.js`): alleen het eigen `profiles[pid]`-slice wordt bijgewerkt; andere profielen én de gedeelde config blijven behouden.
+
+### Gewijzigd — dashboard-configuratie synct nu over profielen
+- **Blok toevoegen/verbergen en de globale "Visible Blocks" worden nu gedeeld via de cloud-bin** (`dashboardConfig`), niet langer apparaat-lokaal in `localStorage`. Voeg je op je Personal-profiel een blok toe of verberg je er één, dan zie je dat ook op je werkprofiel (en op de telefoon). Convergentie ≤60s (de extensie herleest de bin elke minuut) en direct bij handmatige refresh.
+  - Datamodel: `dashboardConfig = { providersOff:{}, blocks:{ "<pid>|<provider>": "hidden"|"added" } }` in de versleutelde payload.
+  - Schrijven gebeurt via read-modify-write (`persistDashboardConfig`) zodat `profiles{}` nooit gewist wordt; werkt vanuit extensie én PWA.
+  - Bestaande lokale verberg-/toevoeg-voorkeuren worden eenmalig gemigreerd naar de gedeelde config.
+
+### Technisch
+- Nieuwe helpers: `isBlockHidden/isBlockAdded/isProviderOff`, `addBlockToView/removeBlockFromView/clearBlockOverride`, `setProviderOff`, `persistDashboardConfig`, `getSyncConfigForWrite`, `normalizeDashboardConfig`, `migrateLocalConfigOnce`.
+- Geverifieerd via lokale preview met gestubde sync-provider: config-schrijf behoudt alle profielen; een tweede apparaat dat de bin leest toont de toegevoegde/verborgen blokken; extensie-push wist andere profielen niet meer.
+
 ## [0.17.1] — 2026-06-02
 
 ### Opgelost

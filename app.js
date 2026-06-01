@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.17.1";
+const APP_VERSION = "0.18.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -154,7 +154,11 @@ let state = {
     // { "pid-abc1": { label, syncStatus, lastSeen }, ... }
     cloudProfiles: {},
     // Currently selected profile tab (null = all profiles)
-    selectedProfileId: null
+    selectedProfileId: null,
+    // GEDEELDE dashboard-configuratie (gesynct via de cloud-bin, niet per apparaat):
+    //   providersOff: { gemini: true }              → globale harde uit (Settings)
+    //   blocks: { "<pid>|<provider>": "hidden"|"added" } → per (profiel×provider) override
+    dashboardConfig: { providersOff: {}, blocks: {} }
 };
 
 // Pricing presets for prompt estimation
@@ -667,8 +671,9 @@ function normalizeUserSettings(s) {
 }
 
 // Globale schakelaar (Settings → Visible Blocks). Harde uit-zetter voor het hele dashboard.
+// Leest nu uit de GEDEELDE dashboardConfig (providersOff) zodat het over profielen synct.
 function isBlockVisible(provider) {
-    return (state.userSettings.visibleBlocks || {})[provider] !== false;
+    return !isProviderOff(provider);
 }
 
 // Heeft dit profiel daadwerkelijk data voor deze provider? (= ingelogd / pagina geopend)
@@ -703,9 +708,9 @@ function applyBlockVisibility() {
         const el = document.getElementById(map[provider]);
         if (!el) return;
         const dataPresent = hasProviderData(provider, ctx.syncStatus, ctx.logs);
-        const shown       = isLocallyShown(ctx.profileId, provider);   // expliciet toegevoegd
+        const shown       = isBlockAdded(ctx.profileId, provider);     // expliciet toegevoegd
         const globalOff   = !isBlockVisible(provider);
-        const localHidden = isLocallyHidden(ctx.profileId, provider);
+        const localHidden = isBlockHidden(ctx.profileId, provider);
         el.style.display = ((dataPresent || shown) && !globalOff && !localHidden) ? "" : "none";
         // Werk de pid bij op de (geïnjecteerde) verberg-knop van deze card
         const hb = el.querySelector(".block-hide-btn");
@@ -730,9 +735,9 @@ function addStaticHideButtons() {
         btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
         btn.addEventListener("click", () => {
             const pid = btn.getAttribute("data-pid") || (state.myProfileId || "me");
-            setLocalHidden(pid, provider, true);
-            setLocalShown(pid, provider, false);
+            removeBlockFromView(pid, provider);
             applyBlockVisibility();
+            renderMultiProfileCards();
         });
         // Groepeer de bestaande badge + de knop rechts in de header
         const badge = header.querySelector(".badge");
@@ -755,15 +760,9 @@ function getProviderLoginUrl(provider) {
 
 function openProviderLogin(provider) {
     const ctx = getCurrentProfileContext();
-    // Verberging opheffen + expliciet tonen, zodat het blok meteen verschijnt
-    // (ook providers zonder usage-pagina zoals Gemini)
-    setLocalHidden(ctx.profileId, provider, false);
-    setLocalShown(ctx.profileId, provider, true);
-    if (!isBlockVisible(provider)) {
-        if (!state.userSettings.visibleBlocks) state.userSettings.visibleBlocks = {};
-        state.userSettings.visibleBlocks[provider] = true;
-        saveUserData();
-    }
+    // Expliciet tonen (ook providers zonder usage-pagina zoals Gemini) — gedeeld via de cloud.
+    addBlockToView(ctx.profileId, provider);
+    if (isProviderOff(provider)) setProviderOff(provider, false);  // globale uit opheffen
     const url = getProviderLoginUrl(provider);
     if (url) {
         if (typeof chrome !== "undefined" && chrome.tabs) {
@@ -786,8 +785,8 @@ function renderAddBlockPanel() {
     panel.innerHTML = PROVIDER_ORDER.map(p => {
         const meta = PROVIDER_META[p];
         const has = hasProviderData(p, ctx.syncStatus, ctx.logs);
-        const shown = isLocallyShown(ctx.profileId, p);
-        const hidden = isLocallyHidden(ctx.profileId, p) || !isBlockVisible(p);
+        const shown = isBlockAdded(ctx.profileId, p);
+        const hidden = isBlockHidden(ctx.profileId, p) || !isBlockVisible(p);
         const status = hidden ? "Hidden — click to restore" : ((has || shown) ? "Active" : "Not loaded — opens its page");
         return `<button class="add-block-item" data-add-provider="${p}">
             <span class="block-toggle-dot" style="background:var(--color-${meta.cls});"></span>
@@ -822,22 +821,22 @@ function renderStaticRestoreBar(profileId, providers) {
         providers.map(p => `<button class="mp-restore-chip" data-restore-provider="${p}">${PROVIDER_META[p].name} <i class="fa-solid fa-rotate-left"></i></button>`).join("");
     bar.querySelectorAll(".mp-restore-chip").forEach(btn => {
         btn.addEventListener("click", () => {
-            setLocalHidden(profileId, btn.getAttribute("data-restore-provider"), false);
+            clearBlockOverride(profileId, btn.getAttribute("data-restore-provider"));
             applyBlockVisibility();
+            renderMultiProfileCards();
         });
     });
 }
 
-// Houdt de checkboxes in Settings in sync met de opgeslagen instellingen.
+// Houdt de checkboxes in Settings in sync met de GEDEELDE config (providersOff).
 function renderVisibleBlockToggles() {
-    const vb = state.userSettings.visibleBlocks || {};
     ["claude", "chatgpt", "gemini"].forEach(provider => {
         const cb = document.getElementById(`vb-${provider}`);
-        if (cb) cb.checked = vb[provider] !== false;
+        if (cb) cb.checked = !isProviderOff(provider);
     });
 }
 
-// Bedraad de checkboxes één keer bij init: direct opslaan + toepassen bij wijziging.
+// Bedraad de checkboxes één keer bij init: gedeeld opslaan + toepassen bij wijziging.
 function initVisibleBlockToggles() {
     const list = document.getElementById("visible-blocks-list");
     if (!list) return;
@@ -845,10 +844,9 @@ function initVisibleBlockToggles() {
         const cb = e.target.closest("input[type=checkbox][data-block]");
         if (!cb) return;
         const provider = cb.getAttribute("data-block");
-        if (!state.userSettings.visibleBlocks) state.userSettings.visibleBlocks = {};
-        state.userSettings.visibleBlocks[provider] = cb.checked;
+        setProviderOff(provider, !cb.checked);   // gedeeld via dashboardConfig
         applyBlockVisibility();
-        saveUserData();
+        renderMultiProfileCards();
     });
 }
 
@@ -2840,33 +2838,98 @@ const PROVIDER_META = {
 };
 const PROVIDER_ORDER = ["claude", "chatgpt", "gemini"];
 
-// Lokale (niet-gesynchroniseerde) per-profiel verbergvoorkeur.
-function getLocalHiddenMap() {
-    try { return JSON.parse(localStorage.getItem("lt_local_hidden") || "{}"); } catch (e) { return {}; }
+/* --------------------------------------------------------------------------
+   GEDEELDE DASHBOARD-CONFIG (gesynct via de cloud-bin)
+   Eén bron van waarheid voor: welke blokken zichtbaar/verborgen/toegevoegd zijn.
+   Lezen = uit state.dashboardConfig; schrijven = optimistisch lokaal + read-modify-write
+   naar de bin (behoudt profiles{} en andermans wijzigingen).
+   -------------------------------------------------------------------------- */
+function ensureDashboardConfig() {
+    if (!state.dashboardConfig) state.dashboardConfig = { providersOff: {}, blocks: {} };
+    if (!state.dashboardConfig.providersOff) state.dashboardConfig.providersOff = {};
+    if (!state.dashboardConfig.blocks) state.dashboardConfig.blocks = {};
+    return state.dashboardConfig;
 }
-function setLocalHidden(pid, provider, hidden) {
-    const map = getLocalHiddenMap();
-    const key = `${pid}|${provider}`;
-    if (hidden) map[key] = true; else delete map[key];
-    try { localStorage.setItem("lt_local_hidden", JSON.stringify(map)); } catch (e) {}
+function normalizeDashboardConfig(c) {
+    c = c || {};
+    return { providersOff: c.providersOff || {}, blocks: c.blocks || {} };
 }
-function isLocallyHidden(pid, provider) {
-    return !!getLocalHiddenMap()[`${pid}|${provider}`];
+function blockOverride(pid, provider) {
+    return (ensureDashboardConfig().blocks)[`${pid}|${provider}`] || null;
+}
+function isBlockHidden(pid, provider) { return blockOverride(pid, provider) === "hidden"; }
+function isBlockAdded(pid, provider)  { return blockOverride(pid, provider) === "added"; }
+function isProviderOff(provider)      { return !!ensureDashboardConfig().providersOff[provider]; }
+
+// Levert de actieve sync-config voor een schrijf — werkt op extensie én PWA.
+function getSyncConfigForWrite(cb) {
+    const clientCfg = isSyncClient();
+    if (clientCfg) { cb(clientCfg); return; }          // PWA
+    DB.get(["lt_sync_config"], (res) => cb(res.lt_sync_config)); // extensie
 }
 
-// Expliciet toegevoegde blokken: tonen ook als er (nog) geen data is.
-// Nodig voor providers zonder usage-pagina (bv. Gemini = handmatige teller).
-function getLocalShownMap() {
-    try { return JSON.parse(localStorage.getItem("lt_local_shown") || "{}"); } catch (e) { return {}; }
+// Schrijf alleen dashboardConfig naar de bin (read-modify-write; raakt profiles niet aan).
+let _dashCfgWriteInFlight = false, _dashCfgWriteQueued = false;
+function persistDashboardConfig() {
+    const cfg = ensureDashboardConfig();
+    if (_dashCfgWriteInFlight) { _dashCfgWriteQueued = true; return; }
+    _dashCfgWriteInFlight = true;
+    getSyncConfigForWrite((config) => {
+        if (!config || !config.binId || !config.pairingKey) { _dashCfgWriteInFlight = false; return; }
+        const relay = syncRelay(config);
+        relay.read(config.binId).then(existing => {
+            let cloudDoc = {};
+            if (existing && existing.data) {
+                try { cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey)); } catch (e) {}
+            }
+            cloudDoc.dashboardConfig = {
+                providersOff: cfg.providersOff || {},
+                blocks: cfg.blocks || {},
+                updatedAt: Date.now()
+            };
+            const enc = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+            return relay.write(config.binId, { data: enc });
+        }).then(() => {
+            _dashCfgWriteInFlight = false;
+            if (_dashCfgWriteQueued) { _dashCfgWriteQueued = false; persistDashboardConfig(); }
+        }).catch(() => {
+            _dashCfgWriteInFlight = false;
+        });
+    });
 }
-function setLocalShown(pid, provider, shown) {
-    const map = getLocalShownMap();
+
+function _setBlockOverride(pid, provider, value) {  // value: "hidden" | "added" | null
+    const cfg = ensureDashboardConfig();
     const key = `${pid}|${provider}`;
-    if (shown) map[key] = true; else delete map[key];
-    try { localStorage.setItem("lt_local_shown", JSON.stringify(map)); } catch (e) {}
+    if (value) cfg.blocks[key] = value; else delete cfg.blocks[key];
+    persistDashboardConfig();
 }
-function isLocallyShown(pid, provider) {
-    return !!getLocalShownMap()[`${pid}|${provider}`];
+// Verwijderen uit beeld: een toegevoegd-zonder-data blok haal je gewoon weg,
+// anders zetten we het expliciet op "hidden".
+function removeBlockFromView(pid, provider) {
+    _setBlockOverride(pid, provider, isBlockAdded(pid, provider) ? null : "hidden");
+}
+function addBlockToView(pid, provider)   { _setBlockOverride(pid, provider, "added"); }
+function clearBlockOverride(pid, provider) { _setBlockOverride(pid, provider, null); }
+function setProviderOff(provider, off) {
+    const cfg = ensureDashboardConfig();
+    if (off) cfg.providersOff[provider] = true; else delete cfg.providersOff[provider];
+    persistDashboardConfig();
+}
+
+// Eenmalige migratie van oude apparaat-lokale voorkeuren → gedeelde config.
+function migrateLocalConfigOnce() {
+    try {
+        if (localStorage.getItem("lt_config_migrated") === "1") return;
+        const cfg = ensureDashboardConfig();
+        let changed = false;
+        const hid = JSON.parse(localStorage.getItem("lt_local_hidden") || "{}");
+        const shown = JSON.parse(localStorage.getItem("lt_local_shown") || "{}");
+        Object.keys(hid).forEach(k => { if (!cfg.blocks[k]) { cfg.blocks[k] = "hidden"; changed = true; } });
+        Object.keys(shown).forEach(k => { if (!cfg.blocks[k]) { cfg.blocks[k] = "added"; changed = true; } });
+        localStorage.setItem("lt_config_migrated", "1");
+        if (changed) persistDashboardConfig();
+    } catch (e) {}
 }
 
 // Combineert het eigen profiel + alle cloud-profielen tot één lijst.
@@ -3144,10 +3207,10 @@ function renderMultiProfileCards() {
     const hiddenRestore = [];
     profiles.forEach(profile => {
         PROVIDER_ORDER.forEach(provider => {
-            const present = hasProviderData(provider, profile.syncStatus, []) || isLocallyShown(profile.id, provider);
+            const present = hasProviderData(provider, profile.syncStatus, []) || isBlockAdded(profile.id, provider);
             if (!present) return;                               // geen data en niet toegevoegd → geen card
             if (!isBlockVisible(provider)) return;              // globaal verborgen
-            if (isLocallyHidden(profile.id, provider)) {        // lokaal verborgen → restore-chip
+            if (isBlockHidden(profile.id, provider)) {          // verborgen → restore-chip
                 hiddenRestore.push({ pid: profile.id, provider, label: profile.label });
                 return;
             }
@@ -3177,15 +3240,14 @@ function renderMultiProfileCards() {
     multiGrid.querySelectorAll(".mp-hide").forEach(btn => {
         btn.addEventListener("click", () => {
             const pid = btn.getAttribute("data-mp-pid"), prov = btn.getAttribute("data-mp-provider");
-            setLocalHidden(pid, prov, true);
-            setLocalShown(pid, prov, false);
+            removeBlockFromView(pid, prov);
             renderMultiProfileCards();
         });
     });
     // Restore-chips
     multiGrid.querySelectorAll(".mp-restore-chip").forEach(btn => {
         btn.addEventListener("click", () => {
-            setLocalHidden(btn.getAttribute("data-mp-restore-pid"), btn.getAttribute("data-mp-restore-provider"), false);
+            clearBlockOverride(btn.getAttribute("data-mp-restore-pid"), btn.getAttribute("data-mp-restore-provider"));
             renderMultiProfileCards();
         });
     });
@@ -3202,9 +3264,16 @@ function loadCloudProfilesForDesktop() {
                 const doc = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
                 if (doc.profiles && Object.keys(doc.profiles).length > 0) {
                     state.cloudProfiles = doc.profiles;
-                    renderProfileBar();
-                    renderMultiProfileCards();
                 }
+                // Gedeelde dashboard-config van andere profielen overnemen (convergentie ≤60s).
+                // Niet overschrijven terwijl wijzigingen van dit apparaat nog weggeschreven worden.
+                if (!_dashCfgWriteInFlight && !_dashCfgWriteQueued) {
+                    state.dashboardConfig = normalizeDashboardConfig(doc.dashboardConfig);
+                }
+                migrateLocalConfigOnce();
+                renderProfileBar();
+                applyBlockVisibility();
+                renderMultiProfileCards();
             } catch (e) {}
         }).catch(() => {});
     });
@@ -3366,6 +3435,9 @@ function loadCloudUserData(isManual = false) {
             state.userLogs = decryptedData.logs || [];
             state.userThreads = decryptedData.threads || [];
             state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
+            // Gedeelde dashboard-config uit de bin (zichtbaarheid/toegevoegde blokken)
+            state.dashboardConfig = normalizeDashboardConfig(decryptedData.dashboardConfig);
+            migrateLocalConfigOnce();
 
             // Multi-profiel: sla alle profielen op en gebruik geaggregeerde syncStatus
             if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
@@ -3651,33 +3723,57 @@ function logSync(message) {
 // 3. Upload desktop state to cloud sync bin
 function pushUserDataToCloud() {
     if (isSyncClient()) return;
-    
-    DB.get(["lt_sync_config"], (res) => {
+
+    DB.get(["lt_sync_config", "lt_profile_id", "lt_profile_label"], (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) {
             logSync("[Cloud Sync App] Overslaan: Geen actieve mobiele koppeling geconfigureerd.");
             return;
         }
-        
-        logSync(`[Cloud Sync App] Handmatige of tab-update geactiveerd. Gegevens uploaden naar bin: ${config.binId}...`);
-        
-        const dataToUpload = {
-            logs: state.userLogs,
-            threads: state.userThreads,
-            settings: state.userSettings,
-            syncStatus: state.syncStatus,
-            refreshRequested: false, // Reset remote trigger!
-            refreshRequestedAt: null
-        };
-        
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
 
-        syncRelay(config).write(config.binId, { data: encryptedStr })
+        const profileId    = res.lt_profile_id    || "default";
+        const profileLabel = res.lt_profile_label || "Profile";
+        logSync(`[Cloud Sync App] Upload gestart (profiel: ${profileLabel}, bin: ${config.binId})...`);
+
+        const relay = syncRelay(config);
+        // READ-MODIFY-WRITE: lees de bestaande bin zodat we de andere profielen
+        // én de gedeelde dashboardConfig NIET overschrijven. (Voorheen werd hier de
+        // hele bin platgeslagen zonder profiles{} → data-verlies van andere profielen.)
+        relay.read(config.binId).then(existing => {
+            let cloudDoc = {};
+            if (existing && existing.data) {
+                try {
+                    cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey));
+                } catch (e) {
+                    logSync(`[Cloud Sync App] Waarschuwing: bestaande data onleesbaar (${e.message}). Nieuw document.`);
+                }
+            }
+
+            // Werk alleen het eigen profiel-slice bij
+            if (!cloudDoc.profiles) cloudDoc.profiles = {};
+            cloudDoc.profiles[profileId] = {
+                label:      profileLabel,
+                syncStatus: state.syncStatus || {},
+                lastSeen:   Date.now()
+            };
+
+            // Legacy top-level velden voor backward-compat
+            cloudDoc.logs               = state.userLogs     || [];
+            cloudDoc.threads            = state.userThreads  || [];
+            cloudDoc.settings           = state.userSettings || {};
+            cloudDoc.syncStatus         = state.syncStatus   || {};
+            cloudDoc.refreshRequested   = false;
+            cloudDoc.refreshRequestedAt = null;
+            // cloudDoc.dashboardConfig blijft bewust ongemoeid (gedeelde config).
+
+            const encryptedStr = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+            return relay.write(config.binId, { data: encryptedStr });
+        })
         .then(() => {
-            logSync(`[Cloud Sync App] Gegevens succesvol geüpload naar cloud sync (bin: ${config.binId})!`);
+            logSync(`[Cloud Sync App] Succesvol geüpload (profiel: ${profileLabel}).`);
         })
         .catch(err => {
-            logSync(`[Cloud Sync App FOUT] Upload naar cloud sync mislukt: ${err.message || err}`);
+            logSync(`[Cloud Sync App FOUT] Upload mislukt: ${err.message || err}`);
         });
     });
 }

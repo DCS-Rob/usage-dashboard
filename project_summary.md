@@ -2,7 +2,7 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.17.0**
+**Huidige versie: 0.18.0**
 
 ---
 
@@ -106,9 +106,11 @@ De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub 
    - **Firebase Realtime Database** (primair, sneller): `usage-dashboard-98f1d`, regio `europe-west1`, Spark free tier. REST API — geen SDK. Database URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
    - **npoint.io** (fallback): gratis JSON bin, werkt overal
    - Payload is **E2E XOR-versleuteld** in het `data`-veld. Data-structuur in de bin:
-     `{ data: "<encrypted>", profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, logs, settings, refreshRequested }`
+     `{ data: "<encrypted>", profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, dashboardConfig, logs, settings, refreshRequested }`
    - `syncStatus` per profiel bevat per provider de laatste snapshot: `claude`, `chatgpt`, `codex`, `gemini`
    - Multi-profiel: elk Chrome-profiel pusht onder zijn eigen `profileId` → dashboard toont één kaart per (profiel × abonnement)
+   - **`dashboardConfig` (gedeeld, v0.18.0):** `{ providersOff: { gemini:true }, blocks: { "<pid>|<provider>": "hidden"|"added" } }` — de dashboard-configuratie (welke blokken zichtbaar/verborgen/toegevoegd) is **gedeeld over alle profielen**, niet apparaat-lokaal.
+   - **Iedere schrijver gebruikt read-modify-write** (lees → wijzig eigen slice → schrijf) zodat `profiles{}` en `dashboardConfig` nooit door een andere actie gewist worden. Dit geldt voor: `background.js pushUserDataToCloud`, `app.js pushUserDataToCloud`, `persistDashboardConfig`, `deleteCloudProfile`, `requestRemoteRefresh`, `resetRemoteRefreshRequestFlagBG`. ⚠️ Nooit de hele bin overschrijven zonder eerst te lezen.
 
 ### Multi-profiel architectuur (v0.10+)
 
@@ -142,8 +144,9 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 - **Enkel-profiel weergave**: de rijke statische cards met volledige pace-balken (Remaining Capacity + Remaining Time + reset + Veilig/Let op/Gevaar-status), gefilterd op het geselecteerde profiel. Live bijgewerkt voor het eigen apparaat (log-correctie per seconde); snapshot voor remote profielen.
 - **"All profiles" weergave**: één losse card per (profiel × abonnement) — `renderMultiProfileCards()` + `buildSnapshotCard()` — mét dezelfde volledige pace-balken. Vervangt de oude RD/P-chips.
 - **Zichtbaarheid togglen**:
-  - *Globaal* (Settings → "Visible Blocks"): harde aan/uit per provider voor het hele dashboard (`state.userSettings.visibleBlocks`, gesynchroniseerd).
-  - *Per profiel (lokaal)*: oogje-knop op elke card. Opgeslagen in `localStorage` (`lt_local_hidden`, key `"<pid>|<provider>"`) — niet gesynchroniseerd. Geldt consistent in zowel enkel-profiel als "All profiles". Herstellen via de chips bovenaan de grid.
+  - *Globaal* (Settings → "Visible Blocks"): harde aan/uit per provider voor het hele dashboard → `dashboardConfig.providersOff` (**gedeeld** via de cloud, v0.18.0).
+  - *Per (profiel×provider)*: ✕-knop op elke card verbergt dat blok; "Add a usage block" voegt toe → `dashboardConfig.blocks` (**gedeeld** via de cloud). Voeg je op Personal een blok toe, dan verschijnt het ook op je werkprofiel. Herstellen via de chips bovenaan de grid. Convergentie ≤60s of direct bij refresh.
+  - Schrijven via `persistDashboardConfig()` (read-modify-write, behoudt `profiles`). Oude apparaat-lokale `lt_local_hidden`/`lt_local_shown` worden eenmalig gemigreerd (`migrateLocalConfigOnce`).
 
 ### Belangrijke functies (app.js)
 
@@ -239,6 +242,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.18.0** | 2026-06-02 | **Data-verlies fix:** app-side cloud-upload deed read-modify-write i.p.v. de bin platslaan (wiste andere profielen). **Dashboard-config (blok tonen/verbergen/toevoegen + globale Visible Blocks) synct nu over profielen** via gedeelde `dashboardConfig` in de bin i.p.v. apparaat-lokale `localStorage`. |
 | **0.17.0** | 2026-06-02 | Maandlimiet onder ChatGPT (groen) i.p.v. apart paars Codex-blok; ChatGPT-card toont 5h+Weekly (betaald) of Maandelijks (gratis). Duidelijke ✕-verwijderknop op alle cards. "Add a usage block"-knop opent de inlog/usage-pagina. Tabs-foutmelding (`runtime.lastError`) opgelost. |
 | **0.16.0** | 2026-06-02 | Auto-zichtbaarheid: blokken verschijnen alleen bij data (geen Gemini-blok zonder gebruik). Verberg-knop (oogje) + herstel-balk óók in enkel-profiel weergave. Per-profiel verbergen werkt consistent door in "All profiles". |
 | **0.15.1** | 2026-06-01 | Volledige pace-balken (Remaining Capacity/Time + reset + status) terug in de losse profiel-cards; providerkleuren behouden per blok. Nieuwe reset-tijd parsers. |

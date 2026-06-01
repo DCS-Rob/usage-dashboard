@@ -92,7 +92,7 @@ Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 - ✅ Firebase erin als opslag (primair, npoint als fallback), achter de bestaande provider-laag.
 - ✅ **Multi-profiel**: elk Chrome-profiel pusht onder eigen `profileId`; dashboard toont één kaart per (profiel × abonnement).
 - ✅ **Profiel-beheer**: toevoegen via invite-link, hernoemen, verwijderen (✕ op de profiel-tab).
-- ✅ **Toggle tonen/verbergen** per kaart (globaal in Settings + per profiel lokaal) + auto-zichtbaarheid op basis van data.
+- ✅ **Toggle tonen/verbergen** per kaart + auto-zichtbaarheid op basis van data. Sinds v0.18.0 **gesynct over alle profielen** via gedeelde `dashboardConfig` (configureer op het ene profiel → zichtbaar op de andere).
 - ⬜ **drag-to-reorden** van kaarten — nog te doen.
 - ⬜ **Profielgroepen** ("folders"-gevoel) — nog te doen.
 - ✅ **Multi-account via Chrome-profielen**: scraper tagt data aan het ingelogde profiel.
