@@ -4,6 +4,11 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.17.1] — 2026-06-02
+
+### Opgelost
+- **"Add a usage block" → Gemini liet geen blok verschijnen.** Gemini (en elke provider zonder usage-pagina) heeft geen scrape-data bij het openen, dus de auto-zichtbaarheid hield het blok verborgen. Een expliciet toegevoegd blok wordt nu direct getoond (ook leeg, bv. Gemini op 100% "Counter mode"), los van data — opgeslagen als `lt_local_shown` in `localStorage`. De ✕-verwijderknop wist die markering weer.
+
 ## [0.17.0] — 2026-06-02
 
 ### Gewijzigd

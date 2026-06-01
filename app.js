@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.17.0";
+const APP_VERSION = "0.17.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -703,14 +703,15 @@ function applyBlockVisibility() {
         const el = document.getElementById(map[provider]);
         if (!el) return;
         const dataPresent = hasProviderData(provider, ctx.syncStatus, ctx.logs);
+        const shown       = isLocallyShown(ctx.profileId, provider);   // expliciet toegevoegd
         const globalOff   = !isBlockVisible(provider);
         const localHidden = isLocallyHidden(ctx.profileId, provider);
-        el.style.display = (dataPresent && !globalOff && !localHidden) ? "" : "none";
+        el.style.display = ((dataPresent || shown) && !globalOff && !localHidden) ? "" : "none";
         // Werk de pid bij op de (geïnjecteerde) verberg-knop van deze card
         const hb = el.querySelector(".block-hide-btn");
         if (hb) hb.setAttribute("data-pid", ctx.profileId);
-        // Handmatig verborgen maar wél data → aanbieden om te herstellen
-        if (dataPresent && !globalOff && localHidden) hiddenWithData.push(provider);
+        // Verborgen maar wél data of expliciet toegevoegd → aanbieden om te herstellen
+        if ((dataPresent || shown) && !globalOff && localHidden) hiddenWithData.push(provider);
     });
     renderStaticRestoreBar(ctx.profileId, hiddenWithData);
 }
@@ -730,6 +731,7 @@ function addStaticHideButtons() {
         btn.addEventListener("click", () => {
             const pid = btn.getAttribute("data-pid") || (state.myProfileId || "me");
             setLocalHidden(pid, provider, true);
+            setLocalShown(pid, provider, false);
             applyBlockVisibility();
         });
         // Groepeer de bestaande badge + de knop rechts in de header
@@ -753,8 +755,10 @@ function getProviderLoginUrl(provider) {
 
 function openProviderLogin(provider) {
     const ctx = getCurrentProfileContext();
-    // Verberging opheffen (lokaal + globaal) zodat het blok zichtbaar wordt zodra er data is
+    // Verberging opheffen + expliciet tonen, zodat het blok meteen verschijnt
+    // (ook providers zonder usage-pagina zoals Gemini)
     setLocalHidden(ctx.profileId, provider, false);
+    setLocalShown(ctx.profileId, provider, true);
     if (!isBlockVisible(provider)) {
         if (!state.userSettings.visibleBlocks) state.userSettings.visibleBlocks = {};
         state.userSettings.visibleBlocks[provider] = true;
@@ -769,9 +773,10 @@ function openProviderLogin(provider) {
         }
     }
     applyBlockVisibility();
+    renderMultiProfileCards();
     const panel = document.getElementById("add-block-panel");
     if (panel) panel.style.display = "none";
-    showToast(`<i class="fa-solid fa-arrow-up-right-from-square"></i> Opening ${PROVIDER_META[provider].name}… log in / open the usage page and the block appears automatically.`);
+    showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> ${PROVIDER_META[provider].name} block added. The tab opened so you can log in / load your usage.`);
 }
 
 function renderAddBlockPanel() {
@@ -781,8 +786,9 @@ function renderAddBlockPanel() {
     panel.innerHTML = PROVIDER_ORDER.map(p => {
         const meta = PROVIDER_META[p];
         const has = hasProviderData(p, ctx.syncStatus, ctx.logs);
+        const shown = isLocallyShown(ctx.profileId, p);
         const hidden = isLocallyHidden(ctx.profileId, p) || !isBlockVisible(p);
-        const status = (has && !hidden) ? "Active" : hidden ? "Hidden — click to restore" : "Not loaded — opens its page";
+        const status = hidden ? "Hidden — click to restore" : ((has || shown) ? "Active" : "Not loaded — opens its page");
         return `<button class="add-block-item" data-add-provider="${p}">
             <span class="block-toggle-dot" style="background:var(--color-${meta.cls});"></span>
             <span style="flex:1;text-align:left;">${meta.name}</span>
@@ -2848,6 +2854,21 @@ function isLocallyHidden(pid, provider) {
     return !!getLocalHiddenMap()[`${pid}|${provider}`];
 }
 
+// Expliciet toegevoegde blokken: tonen ook als er (nog) geen data is.
+// Nodig voor providers zonder usage-pagina (bv. Gemini = handmatige teller).
+function getLocalShownMap() {
+    try { return JSON.parse(localStorage.getItem("lt_local_shown") || "{}"); } catch (e) { return {}; }
+}
+function setLocalShown(pid, provider, shown) {
+    const map = getLocalShownMap();
+    const key = `${pid}|${provider}`;
+    if (shown) map[key] = true; else delete map[key];
+    try { localStorage.setItem("lt_local_shown", JSON.stringify(map)); } catch (e) {}
+}
+function isLocallyShown(pid, provider) {
+    return !!getLocalShownMap()[`${pid}|${provider}`];
+}
+
 // Combineert het eigen profiel + alle cloud-profielen tot één lijst.
 function getAllProfilesForGrid() {
     const out = [];
@@ -3036,7 +3057,8 @@ function buildSnapshotCard(provider, profile) {
     let sync = allSync[provider];
     // ChatGPT: de maandlimiet (intern syncStatus.codex) hoort bij dit account
     const monthlySync = (provider === "chatgpt") ? allSync.codex : null;
-    if (!sync && !(provider === "chatgpt" && monthlySync)) return "";
+    // Geen vroege return meer: de aanroeper bepaalt of de card getoond wordt
+    // (data aanwezig óf expliciet toegevoegd). Zonder data tonen we een leeg blok.
     sync = sync || {};
     const now = Date.now();
     const fmtPct = v => (v === undefined || v === null) ? "—" : `${Math.round(v)}%`;
@@ -3122,7 +3144,8 @@ function renderMultiProfileCards() {
     const hiddenRestore = [];
     profiles.forEach(profile => {
         PROVIDER_ORDER.forEach(provider => {
-            if (!hasProviderData(provider, profile.syncStatus, [])) return;  // geen data → geen card
+            const present = hasProviderData(provider, profile.syncStatus, []) || isLocallyShown(profile.id, provider);
+            if (!present) return;                               // geen data en niet toegevoegd → geen card
             if (!isBlockVisible(provider)) return;              // globaal verborgen
             if (isLocallyHidden(profile.id, provider)) {        // lokaal verborgen → restore-chip
                 hiddenRestore.push({ pid: profile.id, provider, label: profile.label });
@@ -3153,7 +3176,9 @@ function renderMultiProfileCards() {
     // Hide-knoppen
     multiGrid.querySelectorAll(".mp-hide").forEach(btn => {
         btn.addEventListener("click", () => {
-            setLocalHidden(btn.getAttribute("data-mp-pid"), btn.getAttribute("data-mp-provider"), true);
+            const pid = btn.getAttribute("data-mp-pid"), prov = btn.getAttribute("data-mp-provider");
+            setLocalHidden(pid, prov, true);
+            setLocalShown(pid, prov, false);
             renderMultiProfileCards();
         });
     });
