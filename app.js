@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.15.0";
+const APP_VERSION = "0.15.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2750,39 +2750,175 @@ function getAllProfilesForGrid() {
     return out;
 }
 
-// Bouwt één compacte snapshot-card voor een (profiel × provider) combinatie.
+// --- Pace-helpers voor de multi-profiel cards (zelfde balken/info als de statische cards) ---
+function clampPct(x) { return Math.max(0, Math.min(100, Math.round(x || 0))); }
+
+// Status-blok (Veilig/Let op/Gevaar) — identiek aan updateParallelPace.
+function paceStatusHTML(capPct, timePct) {
+    let cls = "safe", txt = '<i class="fa-solid fa-circle-check"></i> On Track (Veilig)';
+    if (capPct < timePct) {
+        const gap = timePct - capPct;
+        if (gap <= 15) { cls = "warning"; txt = '<i class="fa-solid fa-circle-exclamation"></i> Let op (Tempo Hoog)'; }
+        else { cls = "danger"; txt = '<i class="fa-solid fa-triangle-exclamation"></i> Te Snel (Gevaar)'; }
+    }
+    return `<div class="parallel-status ${cls} mt-2">${txt}</div>`;
+}
+
+// Eén pace-sectie: Remaining Capacity + Remaining Time + reset + status.
+// cls bepaalt de providerkleur van de capaciteitsbalk (claude-bg/chatgpt-bg/...).
+function paceSectionHTML(title, cls, capPct, timePct, resetLabel) {
+    capPct = clampPct(capPct); timePct = clampPct(timePct);
+    const capStyle = capPct < 20 ? "background-color:var(--accent-red);"
+                   : capPct < 50 ? "background-color:var(--accent-yellow);" : "";
+    return `
+        <div class="parallel-pace-section mb-3">
+            <div class="section-subtitle-small">${title}</div>
+            <div class="parallel-bar-row">
+                <div class="parallel-bar-label"><span>Remaining Capacity:</span><span class="font-mono pct-val">${capPct}%</span></div>
+                <div class="parallel-bar-track"><div class="parallel-bar-fill ${cls}-bg" style="width:${capPct}%;${capStyle}"></div></div>
+            </div>
+            <div class="parallel-bar-row mt-2">
+                <div class="parallel-bar-label"><span>Remaining Time (Resets ${resetLabel}):</span><span class="font-mono pct-val">${timePct}%</span></div>
+                <div class="parallel-bar-track time-track"><div class="parallel-bar-fill time-bg" style="width:${timePct}%;"></div></div>
+            </div>
+            ${paceStatusHTML(capPct, timePct)}
+        </div>`;
+}
+
+// Claude lopende sessie: relatief "Xh Ym" → timePct t.o.v. window.
+function parseClaudeSessionTime(resetSession, windowMs) {
+    let timePct = 0, timerText = "Fully Free";
+    if (resetSession) {
+        const rs = resetSession.replace(/^(?:resets?|herstelt)\s+in\s+/i, "").trim();
+        timerText = rs || timerText;
+        const hMatch = rs.match(/(\d+)\s*(?:hr|h|uur|u)/i);
+        const mMatch = rs.match(/(\d+)\s*(?:min|m)/i);
+        let totalMs = 0;
+        if (hMatch) totalMs += parseInt(hMatch[1]) * 3600000;
+        if (mMatch) totalMs += parseInt(mMatch[1]) * 60000;
+        if (totalMs > 0) timePct = Math.min(100, (totalMs / windowMs) * 100);
+    }
+    return { timePct, timerText };
+}
+
+// Claude weekly: dagnaam / tomorrow / today / relatief "6d 17u" (EN+NL).
+function parseClaudeWeeklyTime(resetWeekly, now) {
+    let timePct = 0, timerText = "Tuesday 06:00";
+    if (!resetWeekly) return { timePct, timerText };
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
+    const dayMatch = resetWeekly.match(/(mon|tue|wed|thu|fri|sat|sun|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
+    const tomorrowMatch = resetWeekly.match(/(?:tomorrow|morgen)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    const todayMatch = resetWeekly.match(/(?:today|vandaag)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
+    if (dayMatch) {
+        const resetMs = getNextWeeklyResetMs(dayMatch[1], dayMatch[2]);
+        const diffMs = resetMs - now;
+        if (diffMs > 0) { timePct = (diffMs / weekMs) * 100; timerText = formatWeeklyTimeMs(diffMs); }
+    } else if (tomorrowMatch || todayMatch) {
+        const mt = tomorrowMatch || todayMatch;
+        let h = parseInt(mt[1]), m = parseInt(mt[2]);
+        const ampm = (mt[3] || "").toUpperCase();
+        if (ampm === "PM" && h < 12) h += 12;
+        if (ampm === "AM" && h === 12) h = 0;
+        const d = new Date();
+        if (tomorrowMatch) d.setDate(d.getDate() + 1);
+        d.setHours(h, m, 0, 0);
+        const diffMs = d.getTime() - now;
+        if (diffMs > 0) { timePct = (diffMs / weekMs) * 100; timerText = formatWeeklyTimeMs(diffMs); }
+    } else {
+        timerText = resetWeekly
+            .replace(/^(?:resets?\s+in|herstelt\s+(?:over|in))\s+/i, "")
+            .replace(/^(?:resets?|herstelt)\s+/i, "").replace(/^(?:over|in)\s+/i, "").trim();
+        const tm = timerText.match(/(?:(\d+)\s*d(?:ag(?:en)?|ay)?s?)?\s*(?:(\d+)\s*(?:h(?:r|r?s|ours?)?|u(?:ur|ren?)?))?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?\s*(?:(\d+)\s*s(?:ec(?:onds?)?)?)?/i);
+        if (tm && (tm[1] || tm[2] || tm[3] || tm[4])) {
+            const diffMs = ((parseInt(tm[1] || 0) * 86400) + (parseInt(tm[2] || 0) * 3600) + (parseInt(tm[3] || 0) * 60) + parseInt(tm[4] || 0)) * 1000;
+            if (diffMs > 0) { timePct = (diffMs / weekMs) * 100; timerText = formatWeeklyTimeMs(diffMs); }
+        }
+    }
+    return { timePct, timerText };
+}
+
+// ChatGPT 5h: "Reset 13:54" → tijd tot doel (vandaag/morgen).
+function parseChatgpt5hTime(reset5h, now) {
+    let timePct = 0, timerText = "Active";
+    if (!reset5h) return { timePct, timerText };
+    const match = reset5h.match(/(\d{1,2})[:.](\d{2})/);
+    if (!match) { return { timePct, timerText: reset5h }; }
+    const target = new Date();
+    target.setHours(parseInt(match[1]), parseInt(match[2]), 0, 0);
+    let diffMs = target.getTime() - now;
+    if (diffMs < -30 * 60 * 1000) { target.setDate(target.getDate() + 1); diffMs = target.getTime() - now; }
+    if (diffMs > 0) { timePct = Math.min(100, (diffMs / (5 * 60 * 60 * 1000)) * 100); timerText = formatTimeMs(diffMs); }
+    return { timePct, timerText };
+}
+
+// Datum-gebaseerde reset ("1 jul 2026 23:24") → timePct t.o.v. windowMs (week of maand).
+function parseDateResetTime(resetStr, now, windowMs) {
+    let timePct = 0, timerText = (resetStr || "").replace(/^(?:resets?|herstelt)\s*/i, "").trim() || "—";
+    if (!resetStr) return { timePct, timerText };
+    const months = { jan: 0, feb: 1, mar: 2, mrt: 2, apr: 3, may: 4, mei: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11 };
+    const m = resetStr.match(/(\d{1,2})\s*([a-z]+)\.?\s*(\d{4})?(?:[\s,]+(?:om|at|op|on)?[\s,]*(\d{1,2})[:.](\d{2}))?/i);
+    if (m) {
+        const day = parseInt(m[1]);
+        const monthName = (m[2] || "").toLowerCase().substring(0, 3);
+        if (months[monthName] !== undefined) {
+            const year = m[3] ? parseInt(m[3]) : new Date().getFullYear();
+            const hours = m[4] ? parseInt(m[4]) : 0;
+            const mins = m[5] ? parseInt(m[5]) : 0;
+            const target = new Date(year, months[monthName], day, hours, mins, 0, 0);
+            const diffMs = target.getTime() - now;
+            if (diffMs > 0) { timePct = Math.min(100, (diffMs / windowMs) * 100); timerText = formatWeeklyTimeMs(diffMs); }
+        }
+    }
+    return { timePct, timerText };
+}
+
+// Berekent alle pace-secties voor een (provider × snapshot).
+function computeProviderPace(provider, sync, now) {
+    const sections = [];
+    if (provider === "claude") {
+        const windowMs = (state.userSettings.claude.windowHours || 5) * 3600000;
+        const s = parseClaudeSessionTime(sync.resetSession, windowMs);
+        const w = parseClaudeWeeklyTime(sync.resetWeekly, now);
+        sections.push({ title: "Current Session (Pace)", capPct: sync.pctRemaining, timePct: s.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(s.timerText)}</span>` });
+        sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: w.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(w.timerText)}</span>` });
+    } else if (provider === "chatgpt") {
+        const five = parseChatgpt5hTime(sync.reset5h, now);
+        const wk = parseDateResetTime(sync.resetWeekly, now, 7 * 24 * 60 * 60 * 1000);
+        const cap5 = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
+        sections.push({ title: "5 Hour Limit (Pace)", capPct: cap5, timePct: five.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(five.timerText)}</span>` });
+        sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: wk.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(wk.timerText)}</span>` });
+    } else if (provider === "codex") {
+        const mo = parseDateResetTime(sync.resetMonthly, now, 31 * 24 * 60 * 60 * 1000);
+        sections.push({ title: "Monthly Limit (Pace)", capPct: sync.pctRemainingMonthly, timePct: mo.timePct, resetLabel: `<span class="font-mono">${escapeHtmlSafe(mo.timerText)}</span>` });
+    } else if (provider === "gemini") {
+        sections.push({ title: "Usage (Pace)", capPct: sync.limitReached ? 0 : 100, timePct: 0, resetLabel: sync.limitReached ? "limit reached" : "—" });
+    }
+    return sections;
+}
+
+// Bouwt één card per (profiel × provider) — mét de volledige pace-balken.
 function buildSnapshotCard(provider, profile) {
     const meta = PROVIDER_META[provider];
     const sync = (profile.syncStatus || {})[provider];
     if (!meta || !sync) return "";
-
-    // Primair percentage per provider
-    let pct = null;
-    let lines = "";
+    const now = Date.now();
     const fmtPct = v => (v === undefined || v === null) ? "—" : `${Math.round(v)}%`;
 
-    if (provider === "claude") {
-        pct = sync.pctRemaining;
-        lines = `<div class="mp-line">Session: <b>${fmtPct(sync.pctRemaining)}</b></div>
-                 <div class="mp-line">Weekly: <b>${fmtPct(sync.pctRemainingWeekly)}</b></div>`;
-    } else if (provider === "chatgpt") {
-        pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
-        lines = `<div class="mp-line">5h: <b>${fmtPct(sync.pctRemaining5h)}</b></div>
-                 <div class="mp-line">Weekly: <b>${fmtPct(sync.pctRemainingWeekly)}</b></div>`;
-    } else if (provider === "codex") {
-        pct = sync.pctRemainingMonthly;
-        const reset = (sync.resetMonthly || "").replace(/^(?:resets?|herstelt)\s*/i, "").trim();
-        lines = `<div class="mp-line">Monthly: <b>${fmtPct(sync.pctRemainingMonthly)}</b></div>
-                 ${reset ? `<div class="mp-line mp-sub">Reset ${escapeHtmlSafe(reset)}</div>` : ""}`;
-    } else if (provider === "gemini") {
-        pct = sync.limitReached ? 0 : 100;
-        lines = `<div class="mp-line">${sync.limitReached ? "<b style='color:#f87171'>Limit reached</b>" : "Active"}</div>`;
-    }
+    // Primair percentage (ring) per provider
+    let pct;
+    if (provider === "claude")  pct = sync.pctRemaining;
+    else if (provider === "chatgpt") pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
+    else if (provider === "codex")   pct = sync.pctRemainingMonthly;
+    else if (provider === "gemini")  pct = sync.limitReached ? 0 : 100;
 
     const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
-    const r = 54, circ = 2 * Math.PI * r;
+    const r = 60, circ = 2 * Math.PI * r;
     const offset = circ - (pctNum / 100) * circ;
     const lastSeen = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+
+    const sectionsHTML = computeProviderPace(provider, sync, now)
+        .map(s => paceSectionHTML(s.title, meta.cls, s.capPct, s.timePct, s.resetLabel))
+        .join("");
 
     return `
     <div class="glass-panel provider-card ${meta.cls}-card mp-card">
@@ -2797,23 +2933,24 @@ function buildSnapshotCard(provider, profile) {
                     <span class="provider-meta">${escapeHtmlSafe(profile.label)}${profile.isMe ? " <i class='fa-solid fa-desktop' style='opacity:0.6;font-size:0.7rem;'></i>" : ""}</span>
                 </div>
             </div>
+            <span class="badge badge-${meta.cls}">Scraped</span>
         </div>
         <div class="progress-visualization">
-            <div class="progress-ring-container" style="width:120px;height:120px;">
-                <svg class="progress-ring" width="120" height="120">
-                    <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.04)" stroke-width="10" fill="transparent" r="${r}" cx="60" cy="60"/>
-                    <circle class="progress-ring__circle ${meta.cls}-stroke" stroke-width="10" fill="transparent" r="${r}" cx="60" cy="60"
+            <div class="progress-ring-container" style="width:130px;height:130px;">
+                <svg class="progress-ring" width="130" height="130">
+                    <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.04)" stroke-width="11" fill="transparent" r="${r}" cx="65" cy="65"/>
+                    <circle class="progress-ring__circle ${meta.cls}-stroke" stroke-width="11" fill="transparent" r="${r}" cx="65" cy="65"
                         style="stroke-dasharray:${circ} ${circ}; stroke-dashoffset:${offset};"/>
                 </svg>
                 <div class="progress-value">
-                    <span class="pct" style="font-size:1.4rem;">${fmtPct(pct)}</span>
+                    <span class="pct" style="font-size:1.6rem;">${fmtPct(pct)}</span>
                     <span class="lbl">Left</span>
                 </div>
             </div>
         </div>
-        <div class="card-stats mp-stats">
-            ${lines}
-            <div class="mp-line mp-sub"><i class="fa-solid fa-clock" style="opacity:0.5;"></i> ${lastSeen}</div>
+        <div class="card-stats">
+            <div class="sync-status-indicator mb-2"><i class="fa-solid fa-circle-check text-green"></i> <span>${profile.isMe ? "Tab sync" : "Last seen"}: ${lastSeen}</span></div>
+            ${sectionsHTML}
         </div>
     </div>`;
 }

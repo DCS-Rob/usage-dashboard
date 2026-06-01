@@ -4,6 +4,13 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.15.1] — 2026-06-01
+
+### Opgelost / verbeterd
+- **Volledige pace-balken terug in de losse cards**: elke profiel-abonnement-card toont nu dezelfde gedetailleerde balken als de statische cards — Remaining Capacity + Remaining Time, resettijden ("Resets in 4h 12m" / "in 6d 17u" / maanddatum) en de Veilig/Let op/Gevaar-status. Niet langer alleen een ring met percentages.
+- **Providerkleuren behouden** per blok: Claude oranje, ChatGPT groen, Gemini blauw, Codex paars — zowel ring als capaciteitsbalk.
+- Nieuwe reken-helpers (`parseClaudeSessionTime`, `parseClaudeWeeklyTime`, `parseChatgpt5hTime`, `parseDateResetTime`, `computeProviderPace`) berekenen tijd-percentages per snapshot zonder de bestaande statische render-engine te raken.
+
 ## [0.15.0] — 2026-06-01
 
 ### Toegevoegd
