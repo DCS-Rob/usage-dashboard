@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.11.0";
+const APP_VERSION = "0.12.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -278,6 +278,14 @@ function initApp() {
     const urlKey = urlParams.get("key");
     const urlBin = urlParams.get("bin");
     const urlProvider = urlParams.get("provider") || "npoint";
+    const isInviteJoin = urlParams.get("join") === "1";
+
+    if (isInviteJoin && urlKey && urlBin && !DB.isExtension) {
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
+        showExtensionInviteInstallMessage();
+        return;
+    }
 
     if (urlKey && urlBin) {
         const config = {
@@ -339,6 +347,18 @@ function initApp() {
             showView("login");
         }
     });
+}
+
+function showExtensionInviteInstallMessage() {
+    showView("login");
+    const authMsg = document.getElementById("auth-message");
+    const message = `To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DCS-Rob/usage-dashboard" target="_blank" rel="noopener noreferrer" style="color:var(--color-gemini);">github.com/DCS-Rob/usage-dashboard</a>`;
+    if (authMsg) {
+        authMsg.className = "auth-message";
+        authMsg.style.display = "block";
+        authMsg.innerHTML = message;
+    }
+    showToast(`<i class="fa-solid fa-circle-info" style="color:var(--color-gemini)"></i> Usage Dashboard extension required to contribute data.`);
 }
 
 // Simple hash for password profiles
@@ -1737,8 +1757,21 @@ function setupEventListeners() {
     if (btnSaveDashName) btnSaveDashName.addEventListener("click", saveDashboardProfileName);
     const btnCopyAddProfileUrl = document.getElementById("btn-copy-add-profile-url");
     if (btnCopyAddProfileUrl) btnCopyAddProfileUrl.addEventListener("click", () => {
-        const urlEl = document.getElementById("add-profile-url");
-        if (urlEl) navigator.clipboard.writeText(urlEl.textContent).then(() => showToast(`<i class="fa-solid fa-copy"></i> Link copied!`));
+        copyAddProfileInviteLink(`<i class="fa-solid fa-copy"></i> Invite link copied!`);
+    });
+    const btnWhatsAppAddProfileUrl = document.getElementById("btn-whatsapp-add-profile-url");
+    if (btnWhatsAppAddProfileUrl) btnWhatsAppAddProfileUrl.addEventListener("click", () => {
+        const inviteUrl = getAddProfileInviteLink();
+        if (!inviteUrl) {
+            showToast(`<i class="fa-solid fa-circle-exclamation"></i> Generate a pairing code first.`);
+            return;
+        }
+        const text = `Join my Usage Dashboard with this invite link: ${inviteUrl}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+    });
+    const btnCopyOwnProfileUrl = document.getElementById("btn-copy-own-profile-url");
+    if (btnCopyOwnProfileUrl) btnCopyOwnProfileUrl.addEventListener("click", () => {
+        copyAddProfileInviteLink(`<i class="fa-solid fa-copy"></i> Invite copied. Open another Chrome profile, paste it in the address bar, and accept the invite.`);
     });
 }
 
@@ -2206,7 +2239,7 @@ function openAddProfilePanel() {
     const panel = document.getElementById("add-profile-panel");
     if (panel) panel.style.display = "block";
     // Populate the sync URL in the panel
-    DB.get(["lt_sync_config", "lt_pwa_host"], (res) => {
+    DB.get(["lt_sync_config", "lt_pwa_host", "lt_profile_label"], (res) => {
         const config = res.lt_sync_config;
         const urlEl = document.getElementById("add-profile-url");
         const qrEl = document.getElementById("add-profile-qr");
@@ -2216,11 +2249,35 @@ function openAddProfilePanel() {
             return;
         }
         const hostUrl = (res.lt_pwa_host || DEFAULT_PWA_HOST).replace(/\/+$/, "");
-        const providerParam = (config.provider && config.provider !== "npoint") ? `&provider=${config.provider}` : "";
-        const fullUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}${providerParam}`;
+        const params = new URLSearchParams({
+            key: config.pairingKey,
+            bin: config.binId,
+            join: "1",
+            from: res.lt_profile_label || "Dashboard Admin"
+        });
+        if (config.provider) params.set("provider", config.provider);
+        const fullUrl = `${hostUrl}/index.html?${params.toString()}`;
         if (urlEl) urlEl.textContent = fullUrl;
         if (qrEl) qrEl.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(fullUrl)}" alt="QR" style="border-radius:4px;">`;
     });
+}
+
+function getAddProfileInviteLink() {
+    const urlEl = document.getElementById("add-profile-url");
+    const inviteUrl = urlEl ? urlEl.textContent.trim() : "";
+    if (!inviteUrl || !/^https?:\/\//i.test(inviteUrl)) return "";
+    return inviteUrl;
+}
+
+function copyAddProfileInviteLink(successMessage) {
+    const inviteUrl = getAddProfileInviteLink();
+    if (!inviteUrl) {
+        showToast(`<i class="fa-solid fa-circle-exclamation"></i> Generate a pairing code first.`);
+        return;
+    }
+    navigator.clipboard.writeText(inviteUrl)
+        .then(() => showToast(successMessage))
+        .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy invite link.`));
 }
 
 function closeAddProfilePanel() {

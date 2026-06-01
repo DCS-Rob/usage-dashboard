@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.11.0">
+    <link rel="stylesheet" href="style.css?v=0.12.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -223,10 +223,14 @@
 
                         <!-- Step 2: share link -->
                         <div id="add-profile-share-section">
-                            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;"><strong style="color:#fff;">To add another Chrome profile:</strong> copy the link below and open it in that Chrome profile's extension popup (or paste it in the Settings → Mobile Sync of that profile).</p>
+                            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;"><strong style="color:#fff;">To add another Chrome profile:</strong> send this invite link to the other profile. When the extension is installed there, opening the link shows an accept screen.</p>
                             <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
                                 <div id="add-profile-url" style="font-family:monospace;font-size:0.72rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.07);padding:8px 10px;border-radius:6px;word-break:break-all;color:var(--color-gemini);flex:1;line-height:1.4;">No sync configured yet — generate a pairing code first in Settings.</div>
                                 <button type="button" id="btn-copy-add-profile-url" class="btn-secondary" style="padding:0 12px;flex-shrink:0;" title="Copy URL"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                                <button type="button" id="btn-whatsapp-add-profile-url" class="btn-secondary" style="padding:9px 12px;display:inline-flex;align-items:center;gap:8px;"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                                <button type="button" id="btn-copy-own-profile-url" class="btn-secondary" style="padding:9px 12px;display:inline-flex;align-items:center;gap:8px;"><i class="fa-solid fa-user-group"></i> Other Chrome profile</button>
                             </div>
                             <div id="add-profile-qr" style="text-align:center;margin-top:4px;"></div>
                         </div>
@@ -831,6 +835,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.11.0"></script>
+    <script src="app.js?v=0.12.0"></script>
 </body>
 </html>

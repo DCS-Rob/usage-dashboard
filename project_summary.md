@@ -106,7 +106,7 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 | Bestand | Type | Verantwoordelijkheid |
 |---------|------|---------------------|
 | `manifest.json` | MV3 manifest | Permissies, extensie-ID (vaste key), versie |
-| `background.js` | Service Worker | Data verwerking, cloud push, remote refresh poller |
+| `background.js` | Service Worker | Data verwerking, cloud push, remote refresh poller, invite-link acceptatie |
 | `content.js` | Content Script | Scraper voor claude.ai, chatgpt.com, gemini.google.com |
 | `app.js` | UI Controller | Dashboard UI, dual storage (EXT/PWA), sync |
 | `index.html` | HTML | Structuur, alle inline-JS verwijderd (MV3 CSP) |
@@ -168,6 +168,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.12.0** | 2026-06-01 | Invite-flow voor extra Chrome-profielen: `join=1` links, extension accept-overlay via `chrome.scripting.executeScript`, PWA fallback-melding met GitHub repo-link. |
 | **0.8.0-beta.1** | 2026-05-29 | Beta veilige pairing: 256-bit `LT2` keys, URL-fragment pairing, lokale QR-generatie, AES-GCM `secureData` met legacy rollback-fallback. |
 | **0.7.0** | 2026-05-29 | Publieke mobiele hosting via GitHub Pages (`dcs-rob.github.io/usage-dashboard`) + configureerbare PWA-host. webmanifest icon-pad + scope fix. |
 | **0.6.6** | 2026-05-29 | Claude wekelijkse resettimer: NL "u" (uur)-parsing, dagnaam-lookup, en tomorrow/today + "Herstelt over" formaten toegevoegd. |

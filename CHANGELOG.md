@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.0] — 2026-06-01
+
+### Toegevoegd
+- **Invite-flow voor extra Chrome-profielen**: het Add Profile-paneel maakt nu een link met `join=1&from=...`, plus knoppen om de invite te kopiëren, via WhatsApp te delen of in een ander Chrome-profiel te openen.
+- **Extensie-intercept voor invite-links**: `background.js` herkent GitHub Pages invite-links, injecteert een accept-overlay met `chrome.scripting.executeScript` in de default isolated world, en slaat bij acceptatie `lt_sync_config`, `lt_profile_label` en `lt_profile_id` op.
+- **PWA fallback-melding**: als iemand zonder extensie op een `join=1` link komt, wordt er geen read-only mobile pairing gestart. De login/auth-view toont nu duidelijk dat de Chrome-extensie nodig is en verwijst naar `https://github.com/DCS-Rob/usage-dashboard`.
+
+### Gewijzigd
+- Manifest-permissies uitgebreid met `scripting`, `notifications` en host-permissie voor `https://dcs-rob.github.io/*`.
+- Service Worker cache en asset querystrings gebumpt naar `0.12.0`.
+
+---
+
 ## [0.9.0] — 2026-06-01
 
 ### Toegevoegd

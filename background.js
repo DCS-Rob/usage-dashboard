@@ -4,6 +4,8 @@
 
 // Firebase Realtime Database REST-endpoint
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
+const PWA_INVITE_HOST = "dcs-rob.github.io";
+const PWA_INVITE_PATH = "/usage-dashboard";
 
 // Open the dashboard tab when the user clicks the extension action icon
 chrome.action.onClicked.addListener(() => {
@@ -24,6 +26,7 @@ chrome.runtime.onInstalled.addListener(() => {
         }
     });
     ensureRemoteRefreshAlarm();
+    checkActiveTabForInvite();
 });
 
 // Ook bij browser-start opnieuw zetten (service workers worden gesuspend)
@@ -50,6 +53,13 @@ if (chrome.alarms && chrome.alarms.onAlarm) {
     });
 }
 
+if (chrome.tabs && chrome.tabs.onUpdated) {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+        const candidateUrl = changeInfo.url || tab?.url;
+        if (candidateUrl) maybeHandleInviteUrl(tabId, candidateUrl);
+    });
+}
+
 // Listen for messages from content scripts (scrapers) or the dashboard UI
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "SYNC_FROM_TAB") {
@@ -64,9 +74,193 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .then(() => sendResponse({ status: "success" }))
             .catch(err => sendResponse({ status: "error", error: err.message }));
         return true; // Keep message channel open for async responses
+    } else if (message.type === "ACCEPT_INVITE") {
+        acceptInvite(message, sender)
+            .then(() => sendResponse({ status: "success" }))
+            .catch(err => sendResponse({ status: "error", error: err.message }));
+        return true;
     }
     return false;
 });
+
+function checkActiveTabForInvite() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tab = tabs && tabs[0];
+        if (tab && tab.id && tab.url) maybeHandleInviteUrl(tab.id, tab.url);
+    });
+}
+
+function parseInviteUrl(rawUrl) {
+    try {
+        const url = new URL(rawUrl);
+        if (url.hostname !== PWA_INVITE_HOST) return null;
+        if (url.pathname !== PWA_INVITE_PATH && !url.pathname.startsWith(`${PWA_INVITE_PATH}/`)) return null;
+        const join = url.searchParams.get("join");
+        const key = url.searchParams.get("key");
+        const bin = url.searchParams.get("bin");
+        if (join !== "1" || !key || !bin) return null;
+        return {
+            key,
+            bin,
+            provider: url.searchParams.get("provider") || "npoint",
+            from: url.searchParams.get("from") || "A dashboard admin"
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function maybeHandleInviteUrl(tabId, rawUrl) {
+    const invite = parseInviteUrl(rawUrl);
+    if (!invite || !chrome.scripting || !chrome.scripting.executeScript) return;
+
+    chrome.storage.local.get(["lt_sync_config"], (res) => {
+        const existing = res.lt_sync_config;
+        if (existing && existing.enabled && existing.binId === invite.bin) return;
+
+        chrome.scripting.executeScript({
+            target: { tabId },
+            func: showInviteOverlay,
+            args: [invite]
+        }).catch(err => logSync(`[Invite] Overlay injectie mislukt: ${err.message || err}`));
+    });
+}
+
+function showInviteOverlay(invite) {
+    const existing = document.getElementById("usage-dashboard-invite-overlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "usage-dashboard-invite-overlay";
+    overlay.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        "z-index:2147483647",
+        "display:flex",
+        "align-items:center",
+        "justify-content:center",
+        "background:rgba(3,7,18,0.78)",
+        "backdrop-filter:blur(10px)",
+        "font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+    ].join(";");
+
+    const card = document.createElement("div");
+    card.style.cssText = [
+        "width:min(420px,calc(100vw - 32px))",
+        "box-sizing:border-box",
+        "border-radius:14px",
+        "padding:24px",
+        "background:linear-gradient(145deg,rgba(10,16,30,.98),rgba(8,11,22,.96))",
+        "border:1px solid rgba(34,211,238,.28)",
+        "box-shadow:0 24px 80px rgba(0,0,0,.55),0 0 30px rgba(34,211,238,.15)",
+        "color:#fff"
+    ].join(";");
+
+    const title = document.createElement("h2");
+    title.textContent = "Join Usage Dashboard";
+    title.style.cssText = "margin:0 0 10px;font-size:20px;line-height:1.2;color:#fff";
+
+    const text = document.createElement("p");
+    text.textContent = `${invite.from || "A dashboard admin"} invited you to share Usage Dashboard data. Your Claude and ChatGPT usage will be added to the combined dashboard.`;
+    text.style.cssText = "margin:0 0 18px;color:rgba(226,232,240,.82);font-size:14px;line-height:1.55";
+
+    const label = document.createElement("label");
+    label.textContent = "Your name for this profile";
+    label.style.cssText = "display:block;margin:0 0 6px;color:rgba(226,232,240,.72);font-size:12px";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = "Profile";
+    input.style.cssText = [
+        "width:100%",
+        "box-sizing:border-box",
+        "padding:11px 12px",
+        "border-radius:8px",
+        "border:1px solid rgba(255,255,255,.12)",
+        "background:rgba(0,0,0,.28)",
+        "color:#fff",
+        "outline:none",
+        "font-size:14px",
+        "margin-bottom:16px"
+    ].join(";");
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;gap:10px;justify-content:flex-end";
+
+    const decline = document.createElement("button");
+    decline.type = "button";
+    decline.textContent = "Decline";
+    decline.style.cssText = "padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#e5e7eb;cursor:pointer";
+    decline.addEventListener("click", () => overlay.remove());
+
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.textContent = "Accept";
+    accept.style.cssText = "padding:10px 16px;border-radius:8px;border:0;background:linear-gradient(135deg,#06b6d4,#6366f1);color:#fff;font-weight:700;cursor:pointer";
+    accept.addEventListener("click", () => {
+        accept.disabled = true;
+        accept.textContent = "Connecting...";
+        chrome.runtime.sendMessage({
+            type: "ACCEPT_INVITE",
+            key: invite.key,
+            bin: invite.bin,
+            provider: invite.provider || "npoint",
+            label: (input.value || "").trim() || "Profile"
+        }, (response) => {
+            if (response && response.status === "success") {
+                overlay.remove();
+            } else {
+                accept.disabled = false;
+                accept.textContent = "Accept";
+                alert("Could not join this dashboard. Please try again.");
+            }
+        });
+    });
+
+    actions.append(decline, accept);
+    card.append(title, text, label, input, actions);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+}
+
+function acceptInvite(message, sender) {
+    return new Promise((resolve, reject) => {
+        const key = message.key;
+        const bin = message.bin;
+        const provider = message.provider || "npoint";
+        const label = (message.label || "").trim() || "Profile";
+        if (!key || !bin) {
+            reject(new Error("Invite mist key of bin."));
+            return;
+        }
+
+        chrome.storage.local.get(["lt_profile_id"], (res) => {
+            const profileId = res.lt_profile_id || "pid-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 6);
+            const config = { enabled: true, pairingKey: key, binId: bin, provider };
+            chrome.storage.local.set({
+                lt_sync_config: config,
+                lt_profile_label: label,
+                lt_profile_id: profileId
+            }, () => {
+                const messageText = "Connected! Open Claude.ai or ChatGPT to start syncing your data.";
+                if (chrome.notifications && chrome.notifications.create) {
+                    chrome.notifications.create({
+                        type: "basic",
+                        iconUrl: chrome.runtime.getURL("assets/usage-dashboard-logo.svg"),
+                        title: "Usage Dashboard connected",
+                        message: messageText
+                    });
+                }
+                if (sender && sender.tab && sender.tab.id) {
+                    chrome.tabs.update(sender.tab.id, { url: chrome.runtime.getURL("index.html") });
+                }
+                resolve();
+            });
+        });
+    });
+}
 
 // Handle data scraped from settings/analytics tabs
 function handleTabSync(provider, data) {
