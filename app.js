@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.8";
+const APP_VERSION = "0.12.9";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -769,8 +769,10 @@ function getNextWeeklyResetMs(dayName, timeStr) {
 function renderDashboardProgress() {
     const now = Date.now();
 
-    // Profile filtering: gebruik syncStatus van geselecteerd profiel, anders geaggregeerd
+    // Profile filtering: gebruik syncStatus van geselecteerd profiel, anders geaggregeerd.
+    // try/finally garandeert dat state.syncStatus altijd hersteld wordt, ook bij fouten.
     const _savedSyncStatus = state.syncStatus;
+    try {
     if (state.selectedProfileId && state.cloudProfiles && state.cloudProfiles[state.selectedProfileId]) {
         state.syncStatus = state.cloudProfiles[state.selectedProfileId].syncStatus || { claude: null, chatgpt: null };
     }
@@ -1141,8 +1143,10 @@ function renderDashboardProgress() {
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
 
-    // Restore syncStatus
-    state.syncStatus = _savedSyncStatus;
+    } finally {
+        // Herstel altijd — ook als er een fout optrad halverwege de functie
+        state.syncStatus = _savedSyncStatus;
+    }
 }
 
 // 2. Dynamic Settings & Info Page labels
@@ -1221,6 +1225,15 @@ setInterval(() => {
         updateScraperStatusLabels();
     }
 }, 1000);
+
+// Periodieke profiel-refresh voor de desktop extensie (elke 60s).
+// Zorgt dat de profiel-balk up-to-date blijft als andere profielen data pushen,
+// zonder te wachten op een STATE_UPDATED bericht van de background worker.
+setInterval(() => {
+    if (state.currentUser && !isSyncClient()) {
+        loadCloudProfilesForDesktop();
+    }
+}, 60000);
 
 /* ==========================================================================
    UI CIRCULAR PROGRESS RING HELPER
