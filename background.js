@@ -2,6 +2,9 @@
    USAGE DASHBOARD - BACKGROUND SERVICE WORKER (Manifest V3)
    ========================================================================== */
 
+// Firebase Realtime Database REST-endpoint
+const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
+
 // Open the dashboard tab when the user clicks the extension action icon
 chrome.action.onClicked.addListener(() => {
     chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
@@ -266,8 +269,29 @@ const SYNC_PROVIDERS = {
                 body: JSON.stringify(doc)
             }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; }));
         }
+    },
+
+    firebase: {
+        id: "firebase",
+        read(binId) {
+            return fetch(`${FIREBASE_DB_URL}/profiles/${binId}.json?nocache=${Date.now()}`, {
+                cache: "no-store"
+            }).then(r => {
+                if (!r.ok) throw new Error(`Firebase read fout: ${r.status}`);
+                return r.json();
+            }).catch(() => null);
+        },
+        write(binId, doc) {
+            return fetch(`${FIREBASE_DB_URL}/profiles/${binId}.json`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(doc)
+            }).then(res => {
+                if (!res.ok) throw new Error(`Firebase write fout: ${res.status}`);
+                return true;
+            });
+        }
     }
-    // firebase: { ... }  ← wordt later toegevoegd
 };
 function syncRelay(config) {
     const id = (config && config.provider && SYNC_PROVIDERS[config.provider]) ? config.provider : "npoint";

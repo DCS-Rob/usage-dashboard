@@ -2,7 +2,10 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.8.0";
+const APP_VERSION = "0.9.0";
+
+// Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
+const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -161,6 +164,7 @@ let usageChartInstance = null;
 document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     initApp();
+    initQRScanner();
     // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
     // (zie nav-tab click handler in setupEventListeners). Doe één rendering
     // bij start zodat het slot meteen gevuld is als gebruiker daar al staat.
@@ -1908,8 +1912,43 @@ const SYNC_PROVIDERS = {
                 body: JSON.stringify(doc)
             }).then(res => { if (!res.ok) throw new Error(`HTTP Fout: ${res.status}`); return true; }));
         }
+    },
+
+    firebase: {
+        id: "firebase",
+        label: "Firebase · faster realtime sync",
+        // Genereer een uniek profile-ID en schrijf het initiële document.
+        // Geeft het profileId terug als binId (net als npoint zijn token).
+        createBin(doc) {
+            const profileId = "fb-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 6);
+            return fetch(`${FIREBASE_DB_URL}/profiles/${profileId}.json`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(doc)
+            }).then(res => {
+                if (!res.ok) throw new Error(`Firebase createBin fout: ${res.status}`);
+                return profileId; // profileId is de binId
+            });
+        },
+        read(binId) {
+            return fetch(`${FIREBASE_DB_URL}/profiles/${binId}.json?nocache=${Date.now()}`, {
+                cache: "no-store"
+            }).then(res => {
+                if (!res.ok) throw new Error(`Firebase read fout: ${res.status}`);
+                return res.json();
+            }).catch(() => null);
+        },
+        write(binId, doc) {
+            return fetch(`${FIREBASE_DB_URL}/profiles/${binId}.json`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(doc)
+            }).then(res => {
+                if (!res.ok) throw new Error(`Firebase write fout: ${res.status}`);
+                return true;
+            });
+        }
     }
-    // firebase: { ... }  ← wordt later toegevoegd (snellere realtime backend)
 };
 
 // Standaard provider als er (nog) geen keuze in de config staat → npoint.
@@ -2457,5 +2496,176 @@ function applyMobileSyncUI() {
         liveSyncHeader.querySelector("span:not(.pulse-dot)").innerText = "Cloud Sync";
         liveSyncHeader.querySelector(".pulse-dot").style.backgroundColor = "var(--color-gemini)";
         liveSyncHeader.querySelector(".pulse-dot").style.boxShadow = "0 0 6px var(--color-gemini)";
+    }
+}
+
+/* ==========================================================================
+   QR CODE SCANNER (Mobiele koppeling via camera)
+   Gebruikt BarcodeDetector API (Chrome Android) voor live scan.
+   Valt terug op file-input + BarcodeDetector voor iOS / andere browsers.
+   ========================================================================== */
+let _qrStream = null;
+let _qrAnimFrame = null;
+
+function initQRScanner() {
+    const btnOpen = document.getElementById("btn-open-qr-scanner");
+    const btnClose = document.getElementById("btn-close-qr-scanner");
+    const fileInput = document.getElementById("qr-file-input");
+
+    if (btnOpen) btnOpen.addEventListener("click", openQRScanner);
+    if (btnClose) btnClose.addEventListener("click", closeQRScanner);
+    if (fileInput) fileInput.addEventListener("change", handleQRFileInput);
+
+    // Draai chevron-icoon van <details> open/dicht
+    const details = document.querySelector("#mobile-pairing-section details");
+    const icon = document.getElementById("pairing-details-icon");
+    if (details && icon) {
+        details.addEventListener("toggle", () => {
+            icon.style.transform = details.open ? "rotate(90deg)" : "rotate(0deg)";
+        });
+    }
+}
+
+function openQRScanner() {
+    const modal = document.getElementById("qr-scanner-modal");
+    if (!modal) return;
+    modal.style.display = "flex";
+
+    // Controleer of BarcodeDetector beschikbaar is
+    if (typeof BarcodeDetector === "undefined") {
+        // Geen BarcodeDetector — toon file-fallback
+        document.getElementById("qr-video").style.display = "none";
+        document.getElementById("qr-file-fallback").style.display = "block";
+        document.getElementById("qr-scanner-msg").textContent = "Your browser doesn't support live scanning.";
+        return;
+    }
+
+    // Probeer camera te openen
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+            _qrStream = stream;
+            const video = document.getElementById("qr-video");
+            video.srcObject = stream;
+            video.style.display = "block";
+            document.getElementById("qr-file-fallback").style.display = "none";
+            video.addEventListener("loadedmetadata", () => startLiveQRScan(video));
+        })
+        .catch(() => {
+            // Camera geweigerd of niet beschikbaar — toon file-fallback
+            document.getElementById("qr-video").style.display = "none";
+            document.getElementById("qr-file-fallback").style.display = "block";
+            document.getElementById("qr-scanner-msg").textContent = "Camera access denied. Take a photo instead:";
+        });
+}
+
+function startLiveQRScan(video) {
+    if (typeof BarcodeDetector === "undefined") return;
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+
+    const scan = () => {
+        if (!_qrStream) return; // Scanner gesloten
+        detector.detect(video)
+            .then(codes => {
+                if (codes.length > 0) {
+                    handleQRResult(codes[0].rawValue);
+                } else {
+                    _qrAnimFrame = requestAnimationFrame(scan);
+                }
+            })
+            .catch(() => {
+                _qrAnimFrame = requestAnimationFrame(scan);
+            });
+    };
+    _qrAnimFrame = requestAnimationFrame(scan);
+}
+
+function handleQRFileInput(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (typeof BarcodeDetector === "undefined") {
+        // Geen BarcodeDetector — probeer URL direct uit de afbeelding te lezen is niet mogelijk;
+        // vraag de gebruiker om de URL te kopiëren.
+        setQRScannerMsg("⚠️ QR decoding not supported on this browser. Please paste the URL manually.", true);
+        return;
+    }
+
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    const img = new Image();
+    img.onload = () => {
+        detector.detect(img)
+            .then(codes => {
+                if (codes.length > 0) {
+                    handleQRResult(codes[0].rawValue);
+                } else {
+                    setQRScannerMsg("⚠️ No QR code found in the photo. Try again with better lighting.", true);
+                }
+            })
+            .catch(() => setQRScannerMsg("⚠️ Could not read the photo. Try again.", true));
+    };
+    img.src = URL.createObjectURL(file);
+}
+
+function handleQRResult(rawUrl) {
+    closeQRScanner();
+
+    try {
+        let key = null, bin = null, provider = "npoint";
+
+        if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+            const url = new URL(rawUrl);
+            key = url.searchParams.get("key");
+            bin = url.searchParams.get("bin");
+            provider = url.searchParams.get("provider") || "npoint";
+        } else {
+            const params = new URLSearchParams(rawUrl.includes("?") ? rawUrl.split("?")[1] : rawUrl);
+            key = params.get("key");
+            bin = params.get("bin");
+            provider = params.get("provider") || "npoint";
+        }
+
+        if (!key || !bin) {
+            showToast(`<i class="fa-solid fa-circle-exclamation" style="color:var(--accent-red)"></i> Invalid QR code — not a pairing link.`);
+            return;
+        }
+
+        const config = { pairingKey: key, binId: bin, provider, enabled: true };
+        localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
+        CookieStorage.set("lt_sync_client_config", config);
+
+        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> QR scanned! Pairing…`);
+        setTimeout(() => window.location.reload(), 1000);
+    } catch (err) {
+        showToast(`<i class="fa-solid fa-circle-exclamation" style="color:var(--accent-red)"></i> Could not process QR code.`);
+    }
+}
+
+function closeQRScanner() {
+    const modal = document.getElementById("qr-scanner-modal");
+    if (modal) modal.style.display = "none";
+
+    // Stop camera stream
+    if (_qrStream) {
+        _qrStream.getTracks().forEach(t => t.stop());
+        _qrStream = null;
+    }
+    if (_qrAnimFrame) {
+        cancelAnimationFrame(_qrAnimFrame);
+        _qrAnimFrame = null;
+    }
+
+    const video = document.getElementById("qr-video");
+    if (video) { video.srcObject = null; }
+
+    // Reset file input zodat dezelfde foto opnieuw gekozen kan worden
+    const fileInput = document.getElementById("qr-file-input");
+    if (fileInput) fileInput.value = "";
+}
+
+function setQRScannerMsg(text, isError = false) {
+    const msg = document.getElementById("qr-scanner-msg");
+    if (msg) {
+        msg.textContent = text;
+        msg.style.color = isError ? "var(--accent-red)" : "rgba(255,255,255,0.55)";
     }
 }

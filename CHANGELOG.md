@@ -4,6 +4,22 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.9.0] — 2026-06-01
+
+### Toegevoegd
+- **Firebase Realtime Database als sync-provider** — snellere, betrouwbaardere sync naast npoint.io. Firebase gebruikt de REST API (geen SDK), volledig compatibel met MV3 CSP en GitHub Pages PWA.
+- `SYNC_PROVIDERS.firebase` in `app.js` en `background.js`: `createBin` genereert een uniek `fb-<id>` profiel-pad, `read`/`write` gebruiken `PUT`/`GET` op `profiles/<profileId>.json`.
+- `FIREBASE_DB_URL` constante in beide bestanden: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
+- Firebase host toegevoegd aan `manifest.json` `host_permissions`.
+- Provider-selector in Instellingen → Mobiele Synchronisatie: "Firebase · faster realtime sync" nu selecteerbaar (was uitgeschakeld).
+- Firebase project `usage-dashboard-98f1d` (Spark free tier, `europe-west1`) aangemaakt met security rules per `profiles/$profileId`.
+
+### Ongewijzigd
+- npoint blijft de standaard voor bestaande koppelingen (volledig backward-compatible).
+- XOR-encryptie en pairing-flow zijn identiek — alleen de transportlaag verandert per provider.
+
+---
+
 ## [0.8.0-beta.1] — 2026-05-29
 
 ### Toegevoegd
