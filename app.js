@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.0";
+const APP_VERSION = "0.12.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -281,9 +281,10 @@ function initApp() {
     const isInviteJoin = urlParams.get("join") === "1";
 
     if (isInviteJoin && urlKey && urlBin && !DB.isExtension) {
+        const inviteUrl = window.location.href;
         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
-        showExtensionInviteInstallMessage();
+        showExtensionInviteInstallMessage(inviteUrl);
         return;
     }
 
@@ -349,16 +350,59 @@ function initApp() {
     });
 }
 
-function showExtensionInviteInstallMessage() {
+function showExtensionInviteInstallMessage(inviteUrl) {
     showView("login");
     const authMsg = document.getElementById("auth-message");
-    const message = `To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DCS-Rob/usage-dashboard" target="_blank" rel="noopener noreferrer" style="color:var(--color-gemini);">github.com/DCS-Rob/usage-dashboard</a>`;
     if (authMsg) {
-        authMsg.className = "auth-message";
+        authMsg.className = "auth-message invite-install-message";
         authMsg.style.display = "block";
-        authMsg.innerHTML = message;
+        authMsg.innerHTML = `
+            <strong>Usage Dashboard extension required</strong>
+            <p>To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DCS-Rob/usage-dashboard" target="_blank" rel="noopener noreferrer">github.com/DCS-Rob/usage-dashboard</a></p>
+            <div class="invite-install-options">
+                <div class="invite-install-option">
+                    <strong>Already installed in another Chrome profile?</strong>
+                    <span>Open this Chrome profile's extensions page, enable Developer mode, choose Load unpacked, and select the same Usage Dashboard folder.</span>
+                    <button type="button" id="btn-copy-chrome-extensions-url" class="btn-secondary">Copy chrome://extensions</button>
+                </div>
+                <div class="invite-install-option">
+                    <strong>New user?</strong>
+                    <span>Download the project, unzip it, then load the folder as an unpacked Chrome extension.</span>
+                    <button type="button" id="btn-download-extension-zip" class="btn-secondary">Download from GitHub</button>
+                </div>
+            </div>
+            <button type="button" id="btn-copy-invite-after-install" class="btn-primary w-100">Copy invite link for after install</button>
+        `;
+        setupInviteInstallActions(inviteUrl);
     }
     showToast(`<i class="fa-solid fa-circle-info" style="color:var(--color-gemini)"></i> Usage Dashboard extension required to contribute data.`);
+}
+
+function setupInviteInstallActions(inviteUrl) {
+    const copyExtensionsUrlBtn = document.getElementById("btn-copy-chrome-extensions-url");
+    if (copyExtensionsUrlBtn) {
+        copyExtensionsUrlBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText("chrome://extensions")
+                .then(() => showToast(`<i class="fa-solid fa-copy"></i> chrome://extensions copied. Paste it in the address bar.`))
+                .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy chrome://extensions.`));
+        });
+    }
+
+    const downloadBtn = document.getElementById("btn-download-extension-zip");
+    if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+            window.open("https://github.com/DCS-Rob/usage-dashboard/archive/refs/heads/main.zip", "_blank", "noopener,noreferrer");
+        });
+    }
+
+    const copyInviteBtn = document.getElementById("btn-copy-invite-after-install");
+    if (copyInviteBtn) {
+        copyInviteBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(inviteUrl || window.location.href)
+                .then(() => showToast(`<i class="fa-solid fa-copy"></i> Invite link copied. Open it again after loading the extension.`))
+                .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy invite link.`));
+        });
+    }
 }
 
 // Simple hash for password profiles

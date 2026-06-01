@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.1] — 2026-06-01
+
+### Toegevoegd
+- **Install-assistent voor invite-links zonder extensie**: de PWA toont nu twee routes in plaats van alleen tekst:
+  - extensie staat al in een ander Chrome-profiel → `chrome://extensions` kopiëren en dezelfde unpacked folder laden;
+  - nieuwe gebruiker → project-ZIP vanaf GitHub downloaden en als unpacked extension laden.
+- Knop om de originele invite-link te kopiëren, zodat de gebruiker die na het laden van de extensie opnieuw kan openen.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.1`.
+
+---
+
 ## [0.12.0] — 2026-06-01
 
 ### Toegevoegd
