@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.9";
+const APP_VERSION = "0.13.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -397,13 +397,43 @@ function initApp() {
         return;
     }
 
+    // Extensie-modus: login-scherm is zinloos — Chrome-profielbeveiliging IS
+    // de toegangscontrole. Auto-login met profiellabel als gebruikersnaam.
+    // Zo werkt elke Chrome-profiel meteen zonder credentials te hoeven kennen.
+    if (DB.isExtension) {
+        DB.get(["lt_current_user", "lt_profile_label", "lt_users"], (res) => {
+            const users = res.lt_users || {};
+
+            // Al ingelogd en gebruiker bestaat nog → gewoon doorgaan
+            if (res.lt_current_user && users[res.lt_current_user]) {
+                state.currentUser = res.lt_current_user;
+                showView("dashboard");
+                loadUserData();
+                return;
+            }
+
+            // Nog niet ingelogd (of gebruiker bestaat niet meer) →
+            // maak automatisch een gebruiker aan op basis van profiellabel.
+            const autoName = (res.lt_profile_label || "").trim() || "Dashboard User";
+            if (!users[autoName]) {
+                users[autoName] = createDefaultUserProfile(null);
+            }
+            DB.set({ lt_users: users, lt_current_user: autoName }, () => {
+                state.currentUser = autoName;
+                showView("dashboard");
+                loadUserData();
+            });
+        });
+        return;
+    }
+
+    // PWA-modus: login-scherm tonen (meerdere gebruikers op zelfde apparaat mogelijk)
     DB.get(["lt_current_user", "lt_remembered_login"], (res) => {
         if (res.lt_current_user) {
             state.currentUser = res.lt_current_user;
             showView("dashboard");
             loadUserData();
         } else if (res.lt_remembered_login) {
-            // Auto-login met opgeslagen credentials
             const { username, passHash } = res.lt_remembered_login;
             DB.get(["lt_users"], (r2) => {
                 const users = r2.lt_users || {};
@@ -2514,14 +2544,15 @@ function saveDashboardProfileName() {
     const input = document.getElementById("dashboard-profile-name");
     if (!input) return;
     const label = input.value.trim() || "My Profile";
-    DB.set({ lt_profile_label: label }, () => {
-        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
-        // Also sync all label inputs
-        ["sync-profile-label", "sync-profile-label-active"].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = label;
-        });
-        renderProfileBar();
+    // Hergebruik saveProfileLabel-logica (inclusief gebruiker-hernoemen in extensiemodus)
+    const fakeInput = { value: label };
+    const origInput = document.getElementById("sync-profile-label");
+    if (origInput) origInput.value = label;
+    saveProfileLabel();
+    // Sync overige label-inputs
+    ["sync-profile-label", "sync-profile-label-active"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = label;
     });
 }
 
@@ -3013,10 +3044,37 @@ function saveProfileLabel() {
     const input = document.getElementById("sync-profile-label") || document.getElementById("sync-profile-label-active");
     if (!input) return;
     const label = input.value.trim() || "Profile";
-    DB.set({ lt_profile_label: label }, () => {
-        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
-        renderMobileSyncSettings();
-    });
+
+    // In extensiemodus: hernoem ook de huidige dashboardgebruiker zodat
+    // display-username en lt_current_user synchroon lopen met het profiellabel.
+    const doSave = () => {
+        DB.set({ lt_profile_label: label }, () => {
+            showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
+            renderMobileSyncSettings();
+            renderProfileBar();
+            const usernameEl = document.getElementById("display-username");
+            if (usernameEl) usernameEl.innerText = label;
+        });
+    };
+
+    if (DB.isExtension && state.currentUser && state.currentUser !== label) {
+        // Hernoem de gebruiker in lt_users en update lt_current_user
+        DB.get(["lt_users"], (res) => {
+            const users = res.lt_users || {};
+            if (users[state.currentUser] && !users[label]) {
+                users[label] = users[state.currentUser];
+                delete users[state.currentUser];
+            } else if (!users[label]) {
+                users[label] = createDefaultUserProfile(null);
+            }
+            DB.set({ lt_users: users, lt_current_user: label }, () => {
+                state.currentUser = label;
+                doSave();
+            });
+        });
+    } else {
+        doSave();
+    }
 }
 
 // 5c. Join an existing sync bin from a second Chrome profile
