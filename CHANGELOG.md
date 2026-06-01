@@ -4,6 +4,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.3] — 2026-06-01
+
+### Opgelost
+- **Invite zonder extensie viel terug naar read-only dashboard** wanneer er nog een oude `lt_sync_client_config` in de browser stond van een eerdere mobiele pairing-test.
+- Bij `join=1` zonder extensie wist de PWA nu de oude mobile-client config en bewaart hij de invite tijdelijk in `sessionStorage`, zodat een service-worker reload de install-assistent blijft tonen.
+- De auth/login en mobile-pairing controls worden verborgen tijdens de invite install-assistent, zodat de gebruiker niet per ongeluk alsnog de read-only flow gebruikt.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.3`.
+
+---
+
 ## [0.12.2] — 2026-06-01
 
 ### Toegevoegd

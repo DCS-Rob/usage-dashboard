@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.2";
+const APP_VERSION = "0.12.3";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -327,12 +327,21 @@ function initApp() {
     const urlBin = urlParams.get("bin");
     const urlProvider = urlParams.get("provider") || "npoint";
     const isInviteJoin = urlParams.get("join") === "1";
+    const pendingInviteInstallUrl = getPendingInviteInstallUrl();
 
     if (isInviteJoin && urlKey && urlBin && !DB.isExtension) {
         const inviteUrl = window.location.href;
+        rememberPendingInviteInstallUrl(inviteUrl);
+        clearMobileSyncClientConfig();
         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({ path: cleanUrl }, "", cleanUrl);
         showExtensionInviteInstallMessage(inviteUrl);
+        return;
+    }
+
+    if (pendingInviteInstallUrl && !DB.isExtension) {
+        clearMobileSyncClientConfig();
+        showExtensionInviteInstallMessage(pendingInviteInstallUrl);
         return;
     }
 
@@ -398,6 +407,33 @@ function initApp() {
     });
 }
 
+function rememberPendingInviteInstallUrl(inviteUrl) {
+    try {
+        sessionStorage.setItem("lt_pending_invite_install_url", inviteUrl);
+    } catch (e) {}
+}
+
+function getPendingInviteInstallUrl() {
+    try {
+        return sessionStorage.getItem("lt_pending_invite_install_url") || "";
+    } catch (e) {
+        return "";
+    }
+}
+
+function clearPendingInviteInstallUrl() {
+    try {
+        sessionStorage.removeItem("lt_pending_invite_install_url");
+    } catch (e) {}
+}
+
+function clearMobileSyncClientConfig() {
+    try {
+        localStorage.removeItem("lt_sync_client_config");
+    } catch (e) {}
+    CookieStorage.remove("lt_sync_client_config");
+}
+
 function showExtensionInviteInstallMessage(inviteUrl) {
     showView("login");
     const authMsg = document.getElementById("auth-message");
@@ -451,6 +487,12 @@ function setupInviteInstallActions(inviteUrl) {
                 .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy invite link.`));
         });
     }
+
+    const authForm = document.getElementById("auth-form");
+    if (authForm) authForm.style.display = "none";
+
+    const mobilePairing = document.getElementById("mobile-pairing-section");
+    if (mobilePairing) mobilePairing.style.display = "none";
 }
 
 // Simple hash for password profiles
