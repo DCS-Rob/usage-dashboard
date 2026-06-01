@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.4";
+const APP_VERSION = "0.12.5";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -171,6 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     initApp();
     initQRScanner();
+    renderEnvironmentIndicator();
     setTimeout(checkDeploySyncStatus, 1200);
     // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
     // (zie nav-tab click handler in setupEventListeners). Doe één rendering
@@ -214,6 +215,20 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+function renderEnvironmentIndicator() {
+    const indicator = document.getElementById("environment-indicator");
+    if (!indicator) return;
+
+    const label = indicator.querySelector(".environment-label");
+    const isExtension = !!DB.isExtension;
+    indicator.dataset.env = isExtension ? "extension" : "pwa";
+    indicator.title = isExtension
+        ? "You are using the Chrome extension dashboard. This browser profile can scrape and contribute usage data."
+        : "You are using the PWA/mobile dashboard. This view can read synced data, but cannot scrape browser usage without the Chrome extension.";
+    indicator.setAttribute("aria-label", indicator.title);
+    if (label) label.textContent = isExtension ? "Extension" : "PWA";
+}
 
 async function checkDeploySyncStatus() {
     const indicator = document.getElementById("deploy-sync-indicator");

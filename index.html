@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.12.4">
+    <link rel="stylesheet" href="style.css?v=0.12.5">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -137,6 +137,10 @@
                         <span class="pulse-dot"></span>
                         <span>Live Syncing</span>
                     </div>
+                    <button type="button" id="environment-indicator" class="environment-indicator" data-env="unknown" title="Checking dashboard environment...">
+                        <i class="fa-solid fa-window-maximize"></i>
+                        <span class="environment-label">Dashboard</span>
+                    </button>
                     <button type="button" id="deploy-sync-indicator" class="deploy-sync-indicator" data-status="checking" title="Checking whether the mobile/PWA version is running this dashboard version...">
                         <span class="deploy-sync-dot"></span>
                         <span class="deploy-sync-label">PWA Check</span>
@@ -839,6 +843,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.12.4"></script>
+    <script src="app.js?v=0.12.5"></script>
 </body>
 </html>

@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.5] — 2026-06-01
+
+### Toegevoegd
+- **Dashboard environment badge** in de header:
+  - `Extension`: deze Chrome-profielinstantie kan scrapen en data bijdragen.
+  - `PWA`: mobiele/webweergave die synced data kan lezen, maar zonder extensie niet kan scrapen.
+- Tooltiptekst toegevoegd zodat het verschil tussen dashboard-omgeving en PWA-versie-sync duidelijker is.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.5`.
+
+---
+
 ## [0.12.4] — 2026-06-01
 
 ### Gewijzigd

@@ -449,6 +449,37 @@ body.auth-view .app-container {
     white-space: nowrap;
 }
 
+.environment-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.34rem;
+    padding: 0.24rem 0.54rem;
+    border-radius: 9999px;
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    background: rgba(99, 102, 241, 0.08);
+    color: var(--color-gemini);
+    font-size: 0.58rem;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.environment-indicator i {
+    font-size: 0.62rem;
+}
+
+.environment-indicator[data-env="pwa"] {
+    color: var(--accent-yellow);
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.environment-indicator[data-env="extension"] {
+    color: var(--color-gemini);
+    background: rgba(99, 102, 241, 0.08);
+    border-color: rgba(99, 102, 241, 0.28);
+}
+
 .deploy-sync-indicator {
     display: inline-flex;
     align-items: center;
