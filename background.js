@@ -83,6 +83,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
 });
 
+if (chrome.runtime.onMessageExternal) {
+    chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+        const origin = sender && sender.origin ? sender.origin : "";
+        if (origin !== "https://dcs-rob.github.io") return false;
+
+        if (message && message.type === "USAGE_DASHBOARD_PING") {
+            sendResponse({
+                status: "installed",
+                version: chrome.runtime.getManifest().version
+            });
+            return false;
+        }
+
+        return false;
+    });
+}
+
 function checkActiveTabForInvite() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const tab = tabs && tabs[0];

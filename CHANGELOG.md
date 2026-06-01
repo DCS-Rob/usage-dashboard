@@ -4,6 +4,21 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.8] — 2026-06-01
+
+### Toegevoegd
+- **Extensie-detectie vanuit invite install-assistent**: de GitHub Pages PWA mag nu veilig de vaste Usage Dashboard extensie-ID pingen via `externally_connectable`.
+- Als de extensie in hetzelfde Chrome-profiel aanwezig is, toont de invite install-assistent een gerichte melding: extensie gevonden, reloaden via `chrome://extensions`, daarna invite opnieuw openen.
+
+### Veiligheid
+- Alleen `https://dcs-rob.github.io/*` mag de extensie pingen.
+- De extensie geeft alleen `status` en `version` terug; geen sync-config, keys of dashboarddata.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.8`.
+
+---
+
 ## [0.12.7] — 2026-06-01
 
 ### Gewijzigd

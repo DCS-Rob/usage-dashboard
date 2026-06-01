@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.7";
+const APP_VERSION = "0.12.8";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -12,6 +12,7 @@ const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1
 // (bv. een eigen Tailscale-host voor volledig privé verkeer). Opgeslagen onder lt_pwa_host.
 const DEFAULT_PWA_HOST = "https://dcs-rob.github.io/usage-dashboard";
 const DEPLOY_VERSION_CHECK_URL = `${DEFAULT_PWA_HOST}/app.js`;
+const EXTENSION_ID = "dclbninbcejifmbadajdolibjcifmloc";
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -459,6 +460,11 @@ function showExtensionInviteInstallMessage(inviteUrl) {
             <strong>Usage Dashboard extension required</strong>
             <p>To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DCS-Rob/usage-dashboard" target="_blank" rel="noopener noreferrer">github.com/DCS-Rob/usage-dashboard</a></p>
             <div class="invite-install-options">
+                <div id="invite-extension-detected" class="invite-install-option invite-extension-detected" style="display:none;">
+                    <strong>Extension detected in this Chrome profile</strong>
+                    <span id="invite-extension-detected-text">Reload the Usage Dashboard extension in chrome://extensions, then open this invite again.</span>
+                    <button type="button" id="btn-copy-detected-extensions-url" class="btn-secondary">Copy chrome://extensions</button>
+                </div>
                 <div class="invite-install-option">
                     <strong>Already installed in another Chrome profile?</strong>
                     <span>Open this Chrome profile's extensions page, enable Developer mode, choose Load unpacked, and select the same Usage Dashboard folder. If it is already loaded, click Reload first so this profile runs the latest invite flow.</span>
@@ -473,6 +479,7 @@ function showExtensionInviteInstallMessage(inviteUrl) {
             <button type="button" id="btn-copy-invite-after-install" class="btn-primary w-100">Copy invite link for after install</button>
         `;
         setupInviteInstallActions(inviteUrl);
+        updateInviteInstallDetectedExtension();
     }
     showToast(`<i class="fa-solid fa-circle-info" style="color:var(--color-gemini)"></i> Usage Dashboard extension required to contribute data.`);
 }
@@ -481,10 +488,13 @@ function setupInviteInstallActions(inviteUrl) {
     const copyExtensionsUrlBtn = document.getElementById("btn-copy-chrome-extensions-url");
     if (copyExtensionsUrlBtn) {
         copyExtensionsUrlBtn.addEventListener("click", () => {
-            navigator.clipboard.writeText("chrome://extensions")
-                .then(() => showToast(`<i class="fa-solid fa-copy"></i> chrome://extensions copied. Reload Usage Dashboard in this Chrome profile.`))
-                .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy chrome://extensions.`));
+            copyChromeExtensionsUrl();
         });
+    }
+
+    const copyDetectedExtensionsUrlBtn = document.getElementById("btn-copy-detected-extensions-url");
+    if (copyDetectedExtensionsUrlBtn) {
+        copyDetectedExtensionsUrlBtn.addEventListener("click", copyChromeExtensionsUrl);
     }
 
     const downloadBtn = document.getElementById("btn-download-extension-zip");
@@ -508,6 +518,59 @@ function setupInviteInstallActions(inviteUrl) {
 
     const mobilePairing = document.getElementById("mobile-pairing-section");
     if (mobilePairing) mobilePairing.style.display = "none";
+}
+
+function copyChromeExtensionsUrl() {
+    navigator.clipboard.writeText("chrome://extensions")
+        .then(() => showToast(`<i class="fa-solid fa-copy"></i> chrome://extensions copied. Reload Usage Dashboard in this Chrome profile.`))
+        .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy chrome://extensions.`));
+}
+
+function updateInviteInstallDetectedExtension() {
+    detectInstalledExtension()
+        .then((info) => {
+            if (!info || info.status !== "installed") return;
+
+            const detected = document.getElementById("invite-extension-detected");
+            const text = document.getElementById("invite-extension-detected-text");
+            if (detected) detected.style.display = "grid";
+            if (text) {
+                text.textContent = `Usage Dashboard extension is installed in this Chrome profile${info.version ? ` (v${info.version})` : ""}. Reload it in chrome://extensions, then open this invite again.`;
+            }
+        })
+        .catch(() => {});
+}
+
+function detectInstalledExtension() {
+    return new Promise((resolve) => {
+        try {
+            if (!window.chrome || !chrome.runtime || !chrome.runtime.sendMessage) {
+                resolve(null);
+                return;
+            }
+
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    resolve(null);
+                }
+            }, 900);
+
+            chrome.runtime.sendMessage(EXTENSION_ID, { type: "USAGE_DASHBOARD_PING" }, (response) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (chrome.runtime.lastError || !response) {
+                    resolve(null);
+                    return;
+                }
+                resolve(response);
+            });
+        } catch (e) {
+            resolve(null);
+        }
+    });
 }
 
 // Simple hash for password profiles

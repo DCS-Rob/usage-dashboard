@@ -168,6 +168,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.12.8** | 2026-06-01 | Invite install-assistent kan via veilige `externally_connectable` ping zien of de vaste extensie-ID in dit Chrome-profiel aanwezig is en dan reload-instructies tonen. |
 | **0.12.7** | 2026-06-01 | Invite/install flow verduidelijkt dat unpacked extensions per Chrome-profiel handmatig herladen moeten worden; accept-overlay toont reload-hint bij login fallback. |
 | **0.12.6** | 2026-06-01 | Fix: invite accept in nieuw Chrome-profiel maakt automatisch lokale gebruiker aan en logt direct in, omdat extensie-opslag per profiel gescheiden is. |
 | **0.12.5** | 2026-06-01 | Header toont aparte environment badge: `Extension` voor scraper-dashboard of `PWA` voor mobiele/webweergave zonder scrape-capability. |
