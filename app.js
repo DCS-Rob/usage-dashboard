@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.13.1";
+const APP_VERSION = "0.13.2";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2484,10 +2484,17 @@ function renderProfileBar() {
         }
         bar.style.display = "flex";
 
-        // Voeg eigen profiel toe als het er nog niet in zit (desktop vóór eerste sync)
+        // Voeg eigen profiel toe als het er nog niet in zit (desktop vóór eerste sync).
+        // ALTIJD de lokaal opgeslagen naam gebruiken voor dit apparaat —
+        // dit zorgt dat een naamswijziging direct zichtbaar is zonder te wachten op Firebase.
         const allProfiles = { ...profiles };
-        if (myId && !allProfiles[myId]) {
-            allProfiles[myId] = { label: myLabel, syncStatus: state.syncStatus, lastSeen: Date.now() };
+        if (myId) {
+            allProfiles[myId] = {
+                ...(allProfiles[myId] || {}),
+                label: myLabel,
+                syncStatus: allProfiles[myId]?.syncStatus || state.syncStatus,
+                lastSeen: allProfiles[myId]?.lastSeen || Date.now()
+            };
         }
         const allIds = Object.keys(allProfiles);
 
@@ -3118,6 +3125,8 @@ function saveProfileLabel() {
             renderProfileBar();
             const usernameEl = document.getElementById("display-username");
             if (usernameEl) usernameEl.innerText = label;
+            // Push nieuwe naam naar Firebase zodat andere profielen hem meteen zien
+            pushUserDataToCloud();
         });
     };
 
