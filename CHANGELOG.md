@@ -4,6 +4,17 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.6] — 2026-06-01
+
+### Opgelost
+- **Invite accept vroeg alsnog om login in een nieuw Chrome-profiel**: extensie-opslag is per Chrome-profiel gescheiden, dus bestaande dashboard-credentials uit een ander profiel bestaan daar niet.
+- Bij acceptatie van een invite maakt `background.js` nu automatisch een lokale dashboardgebruiker aan met de gekozen profielnaam, zet `lt_current_user`, bewaart de sync-config en opent daarna direct het extensie-dashboard.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.6`.
+
+---
+
 ## [0.12.5] — 2026-06-01
 
 ### Toegevoegd

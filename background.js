@@ -236,13 +236,20 @@ function acceptInvite(message, sender) {
             return;
         }
 
-        chrome.storage.local.get(["lt_profile_id"], (res) => {
+        chrome.storage.local.get(["lt_profile_id", "lt_users"], (res) => {
             const profileId = res.lt_profile_id || "pid-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 6);
             const config = { enabled: true, pairingKey: key, binId: bin, provider };
+            const users = res.lt_users || {};
+            if (!users[label]) {
+                users[label] = createInviteUserProfile();
+            }
             chrome.storage.local.set({
                 lt_sync_config: config,
                 lt_profile_label: label,
-                lt_profile_id: profileId
+                lt_profile_id: profileId,
+                lt_users: users,
+                lt_current_user: label,
+                lt_remembered_login: null
             }, () => {
                 const messageText = "Connected! Open Claude.ai or ChatGPT to start syncing your data.";
                 if (chrome.notifications && chrome.notifications.create) {
@@ -260,6 +267,20 @@ function acceptInvite(message, sender) {
             });
         });
     });
+}
+
+function createInviteUserProfile() {
+    return {
+        passHash: null,
+        logs: [],
+        threads: [],
+        settings: {
+            claude: { limitTokens: 200000, windowHours: 5 },
+            chatgpt: { limitMessages: 120, windowHours: 3 },
+            gemini: { limitMessages: 100, windowHours: 24 }
+        },
+        syncStatus: { claude: null, chatgpt: null }
+    };
 }
 
 // Handle data scraped from settings/analytics tabs
