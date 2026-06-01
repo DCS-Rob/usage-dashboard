@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.13.3";
+const APP_VERSION = "0.14.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -141,7 +141,10 @@ let state = {
     userSettings: {
         claude: { limitTokens: 200000, windowHours: 5 },
         chatgpt: { limitMessages: 120, windowHours: 3 },
-        gemini: { limitMessages: 100, windowHours: 24 }
+        gemini: { limitMessages: 100, windowHours: 24 },
+        // Globale zichtbaarheid per blok (geldt voor het hele dashboard).
+        // Per-profiel overrides worden apart opgeslagen in de cloud-doc.
+        visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true }
     },
     syncStatus: {
         claude: null,
@@ -644,6 +647,72 @@ function showView(view) {
 }
 
 /* ==========================================================================
+   SETTINGS NORMALISATIE & BLOK-ZICHTBAARHEID
+   ========================================================================== */
+// Zorgt dat oudere opgeslagen settings altijd de nieuwe velden krijgen
+// (zoals visibleBlocks), zodat we nergens op undefined hoeven te checken.
+function normalizeUserSettings(s) {
+    s = s || {};
+    if (!s.claude)  s.claude  = { limitTokens: 200000, windowHours: 5 };
+    if (!s.chatgpt) s.chatgpt = { limitMessages: 120, windowHours: 3 };
+    if (!s.gemini)  s.gemini  = { limitMessages: 100, windowHours: 24 };
+    const vb = s.visibleBlocks || {};
+    s.visibleBlocks = {
+        claude:  vb.claude  !== false,
+        chatgpt: vb.chatgpt !== false,
+        codex:   vb.codex   !== false,
+        gemini:  vb.gemini  !== false
+    };
+    return s;
+}
+
+// Bepaalt of een blok zichtbaar moet zijn. Combineert de globale schakelaar
+// (state.userSettings.visibleBlocks) met een eventuele per-profiel override.
+// profileId === null betekent: gebruik alleen de globale instelling.
+function isBlockVisible(provider, profileId = null) {
+    const global = (state.userSettings.visibleBlocks || {})[provider];
+    if (global === false) return false;
+    if (profileId && state.cloudProfiles && state.cloudProfiles[profileId]) {
+        const ov = state.cloudProfiles[profileId].visibleBlocks;
+        if (ov && ov[provider] === false) return false;
+    }
+    return true;
+}
+
+// Past de globale blok-zichtbaarheid toe op de statische dashboard-cards.
+function applyBlockVisibility() {
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", codex: "card-codex", gemini: "card-gemini" };
+    Object.keys(map).forEach(provider => {
+        const el = document.getElementById(map[provider]);
+        if (el) el.style.display = isBlockVisible(provider) ? "" : "none";
+    });
+}
+
+// Houdt de checkboxes in Settings in sync met de opgeslagen instellingen.
+function renderVisibleBlockToggles() {
+    const vb = state.userSettings.visibleBlocks || {};
+    ["claude", "chatgpt", "codex", "gemini"].forEach(provider => {
+        const cb = document.getElementById(`vb-${provider}`);
+        if (cb) cb.checked = vb[provider] !== false;
+    });
+}
+
+// Bedraad de checkboxes één keer bij init: direct opslaan + toepassen bij wijziging.
+function initVisibleBlockToggles() {
+    const list = document.getElementById("visible-blocks-list");
+    if (!list) return;
+    list.addEventListener("change", (e) => {
+        const cb = e.target.closest("input[type=checkbox][data-block]");
+        if (!cb) return;
+        const provider = cb.getAttribute("data-block");
+        if (!state.userSettings.visibleBlocks) state.userSettings.visibleBlocks = {};
+        state.userSettings.visibleBlocks[provider] = cb.checked;
+        applyBlockVisibility();
+        saveUserData();
+    });
+}
+
+/* ==========================================================================
    DATA HANDLERS (LOAD & SAVE)
    ========================================================================== */
 function loadUserData(callback) {
@@ -656,7 +725,7 @@ function loadUserData(callback) {
         const finish = () => {
             state.userLogs = user.logs || [];
             state.userThreads = user.threads || [];
-            state.userSettings = user.settings || state.userSettings;
+            state.userSettings = normalizeUserSettings(user.settings || state.userSettings);
             state.syncStatus = user.syncStatus || { claude: null, chatgpt: null };
 
             document.getElementById("display-username").innerText = state.currentUser;
@@ -721,6 +790,8 @@ function updateUI() {
     updateScraperStatusLabels();
     renderProfileBar();
     renderGettingStartedBanner();
+    applyBlockVisibility();
+    renderVisibleBlockToggles();
 }
 
 // 1. Calculate and Render Limits Helper
@@ -1184,6 +1255,53 @@ function renderDashboardProgress() {
         geminiTimePct = 0;
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
+
+    // --- D. CODEX MONTHLY CALCULATIONS ---
+    const codexSync = state.syncStatus.codex;
+    let codexPct = 100;
+    let codexTimePct = 0;
+    let codexLastSync = "Not synced";
+    let codexTimerText = "—";
+
+    if (codexSync && (codexSync.pctRemainingMonthly !== undefined && codexSync.pctRemainingMonthly !== null)) {
+        codexPct = Math.max(0, Math.min(100, codexSync.pctRemainingMonthly));
+        codexLastSync = "Tab sync: " + formatTimeAgo(codexSync.lastSynced);
+
+        if (codexSync.resetMonthly) {
+            // Strip prefix en toon de ruwe resetdatum (bv. "1 jul 2026 23:24")
+            codexTimerText = codexSync.resetMonthly.replace(/^(?:resets?|herstelt)\s*/i, "").trim() || "—";
+
+            // Tijd-percentage t.o.v. een ~31-daags venster
+            const monthMs = 31 * 24 * 60 * 60 * 1000;
+            const months = { jan: 0, feb: 1, mar: 2, mrt: 2, apr: 3, may: 4, mei: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11 };
+            const m = codexSync.resetMonthly.match(/(\d{1,2})\s*([a-z]+)\.?\s*(\d{4})?(?:[\s,]+(\d{1,2})[:.](\d{2}))?/i);
+            if (m) {
+                const day = parseInt(m[1]);
+                const monthName = (m[2] || "").toLowerCase().substring(0, 3);
+                const year = m[3] ? parseInt(m[3]) : new Date().getFullYear();
+                const hours = m[4] ? parseInt(m[4]) : 0;
+                const mins = m[5] ? parseInt(m[5]) : 0;
+                if (months[monthName] !== undefined) {
+                    const target = new Date(year, months[monthName], day, hours, mins, 0, 0);
+                    const diffMs = target.getTime() - now;
+                    if (diffMs > 0) {
+                        codexTimePct = Math.max(0, Math.min(100, (diffMs / monthMs) * 100));
+                    }
+                }
+            }
+        }
+    }
+
+    const pctCodexEl = document.getElementById("pct-codex");
+    if (pctCodexEl) pctCodexEl.innerText = `${codexPct}%`;
+    const syncCodexEl = document.getElementById("sync-time-codex");
+    if (syncCodexEl) syncCodexEl.innerText = codexLastSync;
+    const timerCodexEl = document.getElementById("timer-codex");
+    if (timerCodexEl) timerCodexEl.innerText = codexTimerText;
+    setProgressRing("ring-codex", codexPct);
+    updateParallelPace("codex", "pace", codexPct, codexTimePct);
+    const emCodex = document.getElementById("empty-state-codex");
+    if (emCodex) emCodex.style.display = codexSync ? "none" : "block";
 
     } finally {
         // Herstel altijd — ook als er een fout optrad halverwege de functie
@@ -1822,6 +1940,9 @@ function setupEventListeners() {
         });
     });
 
+    // K2. Visible-block toggles
+    initVisibleBlockToggles();
+
     // L. Settings Import / Export JSON
     document.getElementById("btn-export-data").addEventListener("click", () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
@@ -1873,7 +1994,8 @@ function setupEventListeners() {
             state.userSettings = {
                 claude: { limitTokens: 200000, windowHours: 5 },
                 chatgpt: { limitMessages: 120, windowHours: 3 },
-                gemini: { limitMessages: 100, windowHours: 24 }
+                gemini: { limitMessages: 100, windowHours: 24 },
+                visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true }
             };
             saveUserData(() => {
                 updateUI();
@@ -2740,7 +2862,7 @@ function loadCloudUserData(isManual = false) {
 
             state.userLogs = decryptedData.logs || [];
             state.userThreads = decryptedData.threads || [];
-            state.userSettings = decryptedData.settings || state.userSettings;
+            state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
 
             // Multi-profiel: sla alle profielen op en gebruik geaggregeerde syncStatus
             if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
@@ -2947,7 +3069,7 @@ function startFastPollingForRemoteSync(baseline) {
 
                 state.userLogs = decryptedData.logs || [];
                 state.userThreads = decryptedData.threads || [];
-                state.userSettings = decryptedData.settings || state.userSettings;
+                state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
                 state.syncStatus = decryptedData.syncStatus || { claude: null, chatgpt: null };
 
                 lastSyncTime = Date.now();

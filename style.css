@@ -16,6 +16,8 @@
     --color-chatgpt-rgb: 16, 185, 129;
     --color-gemini: hsl(245, 90%, 65%);
     --color-gemini-rgb: 99, 102, 241;
+    --color-codex: hsl(258, 90%, 76%);
+    --color-codex-rgb: 167, 139, 250;
     
     /* Functional Colors */
     --text-main: #f3f4f6;
@@ -828,6 +830,12 @@ body.auth-view .app-container {
     border: 1px solid rgba(var(--color-gemini-rgb), 0.2);
 }
 
+.brand-icon-wrapper.codex {
+    background: rgba(var(--color-codex-rgb), 0.12);
+    color: var(--color-codex);
+    border: 1px solid rgba(var(--color-codex-rgb), 0.2);
+}
+
 .provider-meta {
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -875,6 +883,11 @@ body.auth-view .app-container {
 .gemini-stroke {
     stroke: var(--color-gemini);
     filter: drop-shadow(0 0 6px rgba(var(--color-gemini-rgb), 0.4));
+}
+
+.codex-stroke {
+    stroke: var(--color-codex);
+    filter: drop-shadow(0 0 6px rgba(var(--color-codex-rgb), 0.4));
 }
 
 .progress-value {
@@ -1827,6 +1840,7 @@ body.auth-view .app-container {
 .badge-claude { background: rgba(var(--color-claude-rgb), 0.15); color: var(--color-claude); border: 1px solid rgba(var(--color-claude-rgb), 0.2); }
 .badge-chatgpt { background: rgba(var(--color-chatgpt-rgb), 0.15); color: var(--color-chatgpt); border: 1px solid rgba(var(--color-chatgpt-rgb), 0.2); }
 .badge-gemini { background: rgba(var(--color-gemini-rgb), 0.15); color: var(--color-gemini); border: 1px solid rgba(var(--color-gemini-rgb), 0.2); }
+.badge-codex { background: rgba(var(--color-codex-rgb), 0.15); color: var(--color-codex); border: 1px solid rgba(var(--color-codex-rgb), 0.2); }
 
 /* Utilities */
 .font-mono { font-family: monospace; }
@@ -2052,6 +2066,13 @@ body.auth-view .app-container {
 .gemini-bg-trans {
     background-color: rgba(var(--color-gemini-rgb), 0.15) !important;
 }
+.codex-bg {
+    background-color: var(--color-codex) !important;
+    color: var(--color-codex);
+}
+.codex-bg-trans {
+    background-color: rgba(var(--color-codex-rgb), 0.15) !important;
+}
 .info-tooltip {
     cursor: help;
     opacity: 0.6;
@@ -2239,6 +2260,20 @@ body.auth-view .app-container {
 }
 .profile-tab:hover .ptab-delete { opacity: 1; }
 .profile-tab .ptab-delete:hover { color: #f87171; }
+.visible-blocks-list {
+    display: flex; flex-direction: column; gap: 10px;
+}
+.block-toggle {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 0.85rem; color: var(--text-light, #e5e7eb);
+    cursor: pointer; user-select: none;
+}
+.block-toggle input[type="checkbox"] {
+    width: 16px; height: 16px; accent-color: var(--color-gemini); cursor: pointer;
+}
+.block-toggle-dot {
+    width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+}
 .btn-add-profile-tab {
     display: inline-flex; align-items: center; justify-content: center;
     width: 32px; height: 32px; border-radius: 50%;

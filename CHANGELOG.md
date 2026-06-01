@@ -4,6 +4,24 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.14.0] — 2026-06-01
+
+### Toegevoegd
+- **Zichtbaarheid per blok**: nieuw "Visible Blocks" paneel in Settings. Vink providers aan/uit (bv. Gemini verbergen). Geldt globaal voor het hele dashboard, inclusief de gecombineerde weergave. Direct opgeslagen bij wijzigen.
+- **Codex maandlimiet als eigen blok**: nieuwe scraper voor `chatgpt.com/codex/cloud/settings/analytics` (maandelijkse gebruikslimiet). Aparte Codex-card met ring, capaciteitsbalk en resetdatum. Opgeslagen als `syncStatus.codex`.
+- `normalizeUserSettings()` zorgt dat oudere profielen automatisch de nieuwe velden (`visibleBlocks`) krijgen.
+
+### Technisch
+- `isBlockVisible(provider, profileId)` ondersteunt al globale + per-profiel logica (per-profiel overrides volgen in de card-split).
+
+## [0.13.3] — 2026-06-01
+
+### Toegevoegd
+- **Profiel verwijderen**: ✕-knop op profiel-tabs (behalve het eigen apparaat). Verwijdert het profiel uit de gedeelde Firebase-doc; het Chrome-profiel zelf blijft werken.
+
+### Gewijzigd
+- `~/.claude/settings.json`: `remoteControlAtStartup` ingeschakeld.
+
 ## [0.13.2] — 2026-06-01
 
 ### Opgelost / verbeterd

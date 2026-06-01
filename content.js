@@ -340,6 +340,8 @@ function triggerScrape() {
     } else if (url.includes("chatgpt.com") && url.includes("analytics")) {
         logSync("[Scraper] ChatGPT analytics page gedetecteerd. Start scan...");
         observeAndScrape(scrapeChatGPTUsage, false); // Do not disconnect so it scrapes after tab clicks!
+        // Codex maandelijkse gebruikslimiet staat op dezelfde analytics-pagina (apart blok).
+        observeAndScrape(scrapeCodexMonthly, false);
     }
 }
 
@@ -681,6 +683,53 @@ function scrapeChatGPTUsage() {
     }
     
     return false;
+}
+
+// Scrape de Codex maandelijkse gebruikslimiet (apart "Saldo"-blok op de analytics-pagina).
+// Voorbeeldtekst: "Maandelijkse gebruikslimiet  95% resterend  Reset 1 jul 2026 23:24"
+function scrapeCodexMonthly() {
+    const divs = Array.from(document.querySelectorAll('div'));
+
+    // Zoek het kleinste kaartje dat over een MAANDELIJKSE/MONTHLY limiet gaat én een % bevat.
+    const monthlyCards = divs.filter(el => {
+        const txt = el.innerText ? el.innerText.trim() : "";
+        const lower = txt.toLowerCase();
+        return txt.length > 0 && txt.length < 300 &&
+            (lower.includes("maandelijk") || lower.includes("monthly") || lower.includes("per maand") || lower.includes("per month")) &&
+            /\d+\s*%/.test(txt);
+    }).sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
+
+    if (monthlyCards.length === 0) {
+        return false;
+    }
+
+    const text = monthlyCards[0].innerText;
+    const lower = text.toLowerCase();
+    const pctMatch = text.match(/(\d+)\s*%/);
+    if (!pctMatch) return false;
+
+    const val = parseInt(pctMatch[1]);
+    const isRemaining = lower.includes("resterend") || lower.includes("remaining") || lower.includes("left") || lower.includes("over");
+    const pctRemainingMonthly = isRemaining ? val : Math.max(0, 100 - val);
+
+    // Reset-tekst: "Reset 1 jul 2026 23:24" / "Resets ..." / "Herstelt ..."
+    let resetMonthly = "";
+    const resetMatch = text.match(/(?:reset|resets|herstelt)\b[^\n\r]*/i);
+    if (resetMatch) resetMonthly = resetMatch[0].trim();
+
+    logSync(`[Scraper] Codex maandlimiet uitgelezen: ${pctRemainingMonthly}% over, reset="${resetMonthly}"`);
+
+    safeSendMessage({
+        type: "SYNC_FROM_TAB",
+        provider: "codex",
+        data: {
+            pctRemainingMonthly,
+            resetMonthly,
+            pctRemaining: pctRemainingMonthly,
+            summary: `Codex: ${pctRemainingMonthly}% maandlimiet over. ${resetMonthly}`
+        }
+    });
+    return true;
 }
 
 // Persist scraper events into storage logs
