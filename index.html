@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.13.0">
+    <link rel="stylesheet" href="style.css?v=0.13.1">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -203,13 +203,48 @@
                 <section id="tab-dashboard" class="tab-pane active">
 
 
+                    <!-- FIRST-TIME SETUP BANNER (hidden once synced) -->
+                    <div id="getting-started-banner" style="display:none; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.3); border-radius:12px; padding:14px 18px; margin-bottom:18px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                            <div>
+                                <div style="font-size:0.9rem; font-weight:600; color:#fff; margin-bottom:6px;">
+                                    <i class="fa-solid fa-gauge-high" style="color:var(--color-gemini); margin-right:7px;"></i>Welcome to Usage Dashboard
+                                </div>
+                                <p style="font-size:0.78rem; color:rgba(255,255,255,0.6); margin:0 0 10px; line-height:1.5;">
+                                    Open a page below in Chrome — the extension will automatically read your usage data and show it here.
+                                </p>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <a href="https://claude.ai/settings/usage" target="_blank" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--color-claude); background:rgba(242,140,40,0.12); border:1px solid rgba(242,140,40,0.3); padding:5px 12px; border-radius:20px; text-decoration:none;">
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i> claude.ai/settings/usage
+                                    </a>
+                                    <a href="https://chatgpt.com/codex/cloud/settings/analytics#personal-usage" target="_blank" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--color-chatgpt); background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:5px 12px; border-radius:20px; text-decoration:none;">
+                                        <i class="fa-solid fa-arrow-up-right-from-square"></i> chatgpt.com analytics
+                                    </a>
+                                </div>
+                            </div>
+                            <button id="btn-dismiss-banner" style="background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:1rem;padding:0;flex-shrink:0;" title="Dismiss">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <!-- Name prompt (shown when still "Dashboard User") -->
+                        <div id="name-prompt" style="display:none; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.07);">
+                            <p style="font-size:0.75rem; color:rgba(255,255,255,0.5); margin:0 0 7px;">
+                                <i class="fa-solid fa-id-badge" style="color:var(--color-gemini);"></i> Give this Chrome profile a name so you recognise it in the dashboard:
+                            </p>
+                            <div style="display:flex; gap:8px;">
+                                <input type="text" id="banner-profile-name" placeholder="e.g. Rob – Personal" style="font-size:0.85rem; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; flex:1; padding:7px 10px; box-sizing:border-box;">
+                                <button type="button" id="btn-banner-save-name" class="btn-primary" style="padding:0 16px; font-size:0.82rem;">Save name</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- PROFILE BAR -->
                     <div class="profile-bar" id="profile-bar" style="display:none;">
                         <div class="profile-bar-tabs" id="profile-bar-tabs">
                             <!-- Populated by JS -->
                         </div>
-                        <button class="btn-add-profile-tab" id="btn-open-add-profile" title="Add another Chrome profile">
-                            <i class="fa-solid fa-plus"></i>
+                        <button class="btn-add-profile-tab" id="btn-open-add-profile" title="Add another Chrome profile" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px; width:auto;">
+                            <i class="fa-solid fa-plus"></i> <span style="font-size:0.78rem;">Add profile</span>
                         </button>
                     </div>
 
@@ -286,6 +321,11 @@
                                 </div>
                                 <!-- Profile chips (multi-profile combined view) -->
                                 <div class="profile-chips" id="profile-chips-claude"></div>
+                                <!-- Empty state: shown when not yet synced -->
+                                <div id="empty-state-claude" style="display:none; margin:8px 0 4px; padding:8px 10px; background:rgba(242,140,40,0.07); border:1px solid rgba(242,140,40,0.2); border-radius:8px; font-size:0.75rem; color:rgba(255,255,255,0.6); line-height:1.5;">
+                                    <i class="fa-solid fa-circle-info" style="color:var(--color-claude); margin-right:5px;"></i>
+                                    Open <a href="https://claude.ai/settings/usage" target="_blank" style="color:var(--color-claude); font-weight:600;">claude.ai/settings/usage</a> to load your data.
+                                </div>
                                 <!-- Current Session Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
                                     <div class="section-subtitle-small">Current Session (Pace)</div>
@@ -382,6 +422,11 @@
                                 </div>
                                 <!-- Profile chips (multi-profile combined view) -->
                                 <div class="profile-chips" id="profile-chips-chatgpt"></div>
+                                <!-- Empty state: shown when not yet synced -->
+                                <div id="empty-state-chatgpt" style="display:none; margin:8px 0 4px; padding:8px 10px; background:rgba(16,185,129,0.07); border:1px solid rgba(16,185,129,0.2); border-radius:8px; font-size:0.75rem; color:rgba(255,255,255,0.6); line-height:1.5;">
+                                    <i class="fa-solid fa-circle-info" style="color:var(--color-chatgpt); margin-right:5px;"></i>
+                                    Open <a href="https://chatgpt.com/codex/cloud/settings/analytics#personal-usage" target="_blank" style="color:var(--color-chatgpt); font-weight:600;">chatgpt.com analytics</a> to load your data.
+                                </div>
 
                                 <!-- 5 Hour Limit Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
@@ -843,6 +888,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.13.0"></script>
+    <script src="app.js?v=0.13.1"></script>
 </body>
 </html>

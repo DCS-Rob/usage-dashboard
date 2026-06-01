@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.13.0";
+const APP_VERSION = "0.13.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -172,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     initApp();
     initQRScanner();
+    initGettingStartedBanner();
     renderEnvironmentIndicator();
     setTimeout(checkDeploySyncStatus, 1200);
     // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
@@ -422,6 +423,7 @@ function initApp() {
                 state.currentUser = autoName;
                 showView("dashboard");
                 loadUserData();
+                renderGettingStartedBanner();
             });
         });
         return;
@@ -709,6 +711,7 @@ function updateUI() {
     renderAnalyticsChart();
     updateScraperStatusLabels();
     renderProfileBar();
+    renderGettingStartedBanner();
 }
 
 // 1. Calculate and Render Limits Helper
@@ -2395,6 +2398,67 @@ function renderProfileChips(elementId, model) {
             <span class="chip-dot"></span>${initials}
         </span>`;
     }).join("");
+}
+
+/* ==========================================================================
+   GETTING STARTED BANNER & EMPTY STATES
+   ========================================================================== */
+function renderGettingStartedBanner() {
+    const banner = document.getElementById("getting-started-banner");
+    if (!banner) return;
+
+    const claudeSynced  = !!(state.syncStatus && state.syncStatus.claude);
+    const chatgptSynced = !!(state.syncStatus && state.syncStatus.chatgpt);
+
+    // Lege-staat helpers op de kaarten tonen/verbergen
+    const emClaude  = document.getElementById("empty-state-claude");
+    const emChatgpt = document.getElementById("empty-state-chatgpt");
+    if (emClaude)  emClaude.style.display  = claudeSynced  ? "none" : "block";
+    if (emChatgpt) emChatgpt.style.display = chatgptSynced ? "none" : "block";
+
+    // Banner: tonen zolang er nog niets gesynchroniseerd is
+    // (of tonen totdat de gebruiker hem wegklikt)
+    const dismissed = sessionStorage.getItem("lt_banner_dismissed") === "1";
+    if (dismissed || (claudeSynced && chatgptSynced)) {
+        banner.style.display = "none";
+        return;
+    }
+    banner.style.display = "block";
+
+    // Naam-prompt: tonen als de gebruiker nog "Dashboard User" heet
+    const namePrompt = document.getElementById("name-prompt");
+    if (namePrompt && DB.isExtension) {
+        DB.get(["lt_profile_label"], (res) => {
+            const label = (res.lt_profile_label || "").trim();
+            const isDefault = !label || label === "Dashboard User";
+            namePrompt.style.display = isDefault ? "block" : "none";
+        });
+    }
+}
+
+function initGettingStartedBanner() {
+    const btnDismiss = document.getElementById("btn-dismiss-banner");
+    if (btnDismiss) {
+        btnDismiss.addEventListener("click", () => {
+            sessionStorage.setItem("lt_banner_dismissed", "1");
+            const banner = document.getElementById("getting-started-banner");
+            if (banner) banner.style.display = "none";
+        });
+    }
+
+    const btnSaveName = document.getElementById("btn-banner-save-name");
+    if (btnSaveName) {
+        btnSaveName.addEventListener("click", () => {
+            const input = document.getElementById("banner-profile-name");
+            if (!input || !input.value.trim()) return;
+            // Sync input naar het settings-veld en gebruik de bestaande saveProfileLabel logica
+            const settingsInput = document.getElementById("sync-profile-label");
+            if (settingsInput) settingsInput.value = input.value.trim();
+            saveProfileLabel();
+            const namePrompt = document.getElementById("name-prompt");
+            if (namePrompt) namePrompt.style.display = "none";
+        });
+    }
 }
 
 /* ==========================================================================
