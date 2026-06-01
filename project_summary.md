@@ -168,6 +168,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.12.4** | 2026-06-01 | Deploy-sync indicator hernoemd naar duidelijkere PWA/mobile labels: `PWA Synced`, `PWA Behind`, `PWA Unknown`. |
 | **0.12.3** | 2026-06-01 | Fix: invite-links zonder extensie wissen oude mobile-client config en blijven na reload op de install-assistent in plaats van read-only dashboard. |
 | **0.12.2** | 2026-06-01 | Deploy-sync lampje in header vergelijkt actieve app-versie met live GitHub Pages en meldt `Pages Live`, `Pages Behind` of `Deploy Unknown`. |
 | **0.12.1** | 2026-06-01 | Install-assistent voor invite-links zonder extensie: bestaande unpacked folder-route, GitHub ZIP-download en invite-link kopiëren voor na installatie. |

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.3";
+const APP_VERSION = "0.12.4";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -219,7 +219,7 @@ async function checkDeploySyncStatus() {
     const indicator = document.getElementById("deploy-sync-indicator");
     if (!indicator) return;
 
-    setDeploySyncIndicator("checking", "Checking Deploy", "Checking whether GitHub Pages is running this version...");
+    setDeploySyncIndicator("checking", "PWA Check", "Checking whether the mobile/PWA version on GitHub Pages is running this dashboard version...");
 
     try {
         const response = await fetch(`${DEPLOY_VERSION_CHECK_URL}?deployCheck=${Date.now()}`, {
@@ -234,19 +234,19 @@ async function checkDeploySyncStatus() {
         if (!deployedVersion) throw new Error("Version not found");
 
         if (deployedVersion === APP_VERSION) {
-            setDeploySyncIndicator("ok", "Pages Live", `GitHub Pages is in sync: v${deployedVersion}`);
+            setDeploySyncIndicator("ok", "PWA Synced", `Mobile/PWA version is synced with this dashboard: v${deployedVersion}`);
         } else {
             setDeploySyncIndicator(
                 "warning",
-                "Pages Behind",
-                `This app is v${APP_VERSION}, but GitHub Pages is still v${deployedVersion}. Push main and wait for the Pages workflow to finish, then refresh.`
+                "PWA Behind",
+                `This dashboard is v${APP_VERSION}, but the mobile/PWA version is still v${deployedVersion}. Push main, wait for the GitHub Pages workflow to finish, then refresh.`
             );
         }
     } catch (err) {
         setDeploySyncIndicator(
             "unknown",
-            "Deploy Unknown",
-            `Could not check GitHub Pages deploy status. Check GitHub Actions, or verify that main has been pushed.`
+            "PWA Unknown",
+            `Could not check the mobile/PWA version. Check GitHub Actions, network access, or verify that main has been pushed.`
         );
     }
 }

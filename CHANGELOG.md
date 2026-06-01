@@ -4,6 +4,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.4] — 2026-06-01
+
+### Gewijzigd
+- Deploy-sync indicator hernoemd naar duidelijkere PWA/mobile labels:
+  - `PWA Synced`
+  - `PWA Behind`
+  - `PWA Unknown`
+- Tooltiptekst verduidelijkt dat deze indicator de mobiele/PWA versie op GitHub Pages vergelijkt met de actieve dashboardversie.
+- Service Worker cache en asset querystrings gebumpt naar `0.12.4`.
+
+---
+
 ## [0.12.3] — 2026-06-01
 
 ### Opgelost
