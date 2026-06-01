@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.9.0">
+    <link rel="stylesheet" href="style.css?v=0.10.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -235,6 +235,8 @@
                                         <i class="fa-solid fa-arrows-rotate"></i>
                                     </button>
                                 </div>
+                                <!-- Profile chips (multi-profile combined view) -->
+                                <div class="profile-chips" id="profile-chips-claude"></div>
                                 <!-- Current Session Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
                                     <div class="section-subtitle-small">Current Session (Pace)</div>
@@ -329,6 +331,8 @@
                                         <i class="fa-solid fa-arrows-rotate"></i>
                                     </button>
                                 </div>
+                                <!-- Profile chips (multi-profile combined view) -->
+                                <div class="profile-chips" id="profile-chips-chatgpt"></div>
 
                                 <!-- 5 Hour Limit Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
@@ -652,7 +656,19 @@
                                     </div>
 
                                     <div id="sync-setup-actions">
-                                        <p class="desc mb-3">Click the button to generate a unique, secure pairing code and enable cloud sync.</p>
+                                        <!-- My Profile Name -->
+                                        <div class="form-group" style="margin-bottom: 14px;">
+                                            <label for="sync-profile-label" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-id-badge" style="color: var(--color-gemini);"></i> My profile name</label>
+                                            <div style="display: flex; gap: 8px;">
+                                                <input type="text" id="sync-profile-label" placeholder="e.g. Rob – Personal" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; flex: 1; padding: 8px 10px; box-sizing: border-box;">
+                                                <button type="button" id="btn-save-profile-label" class="btn-secondary" style="padding: 0 12px;" title="Save name">
+                                                    <i class="fa-solid fa-floppy-disk"></i>
+                                                </button>
+                                            </div>
+                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">This name is visible to all devices on the shared sync.</p>
+                                        </div>
+
+                                        <p class="desc mb-2" style="font-size: 0.78rem;">Generate a new sync or join an existing one:</p>
                                         <div class="form-group" style="margin-bottom: 12px; text-align: left;">
                                             <label for="sync-provider-select" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-bolt" style="color: var(--color-gemini);"></i> Connection</label>
                                             <select id="sync-provider-select" style="font-size: 0.82rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 9px 10px; box-sizing: border-box;">
@@ -661,12 +677,45 @@
                                             </select>
                                             <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">npoint works everywhere without setup. Firebase is faster and more reliable.</p>
                                         </div>
-                                        <button type="button" id="btn-generate-sync" class="btn-primary w-100">
-                                            <i class="fa-solid fa-key"></i> Generate Pairing Code
-                                        </button>
+                                        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                            <button type="button" id="btn-generate-sync" class="btn-primary" style="flex: 1;">
+                                                <i class="fa-solid fa-key"></i> Generate New Sync
+                                            </button>
+                                            <button type="button" id="btn-join-sync" class="btn-secondary" style="flex: 1;">
+                                                <i class="fa-solid fa-link"></i> Join Existing
+                                            </button>
+                                        </div>
+
+                                        <!-- Join panel (hidden by default) -->
+                                        <div id="join-sync-panel" style="display:none; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; margin-top: 8px;">
+                                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">Paste the pairing URL from the primary Chrome profile:</p>
+                                            <input type="text" id="join-sync-url-input" placeholder="https://dcs-rob.github.io/usage-dashboard/index.html?key=...&bin=..." style="font-size: 0.78rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 8px 10px; box-sizing: border-box; margin-bottom: 8px;">
+                                            <button type="button" id="btn-submit-join-sync" class="btn-primary w-100" style="font-size: 0.82rem; padding: 9px;">
+                                                <i class="fa-solid fa-plug"></i> Connect to this sync
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div id="sync-active-info" style="display: none;">
+                                        <!-- My Profile Name (also visible when active — reuses same input ID) -->
+                                        <div class="form-group mb-3" id="active-profile-label-row">
+                                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-id-badge" style="color: var(--color-gemini);"></i> My profile name</label>
+                                            <div style="display: flex; gap: 8px;">
+                                                <input type="text" id="sync-profile-label-active" placeholder="e.g. Rob – Personal" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; flex: 1; padding: 8px 10px; box-sizing: border-box;">
+                                                <button type="button" id="btn-save-profile-label-active" class="btn-secondary" style="padding: 0 12px;" title="Save name">
+                                                    <i class="fa-solid fa-floppy-disk"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Active profiles list -->
+                                        <div class="form-group mb-3">
+                                            <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 8px;"><i class="fa-solid fa-users" style="color: var(--color-gemini);"></i> Active profiles on this sync</label>
+                                            <div id="sync-active-profiles">
+                                                <p style="font-size:0.75rem; color:var(--text-muted);">Sync your data first to see profiles.</p>
+                                            </div>
+                                        </div>
+
                                         <div class="form-group mb-2">
                                             <label style="font-size: 0.75rem; color: var(--text-muted);">Your Unique Pairing Code (Secret):</label>
                                             <div style="display: flex; gap: 8px;">
@@ -745,6 +794,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.9.0"></script>
+    <script src="app.js?v=0.10.0"></script>
 </body>
 </html>

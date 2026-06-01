@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.9.0";
+const APP_VERSION = "0.10.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -144,7 +144,10 @@ let state = {
     syncStatus: {
         claude: null,
         chatgpt: null
-    }
+    },
+    // Multi-profile: slaat alle profielen op uit de cloud bin
+    // { "pid-abc1": { label, syncStatus, lastSeen }, ... }
+    cloudProfiles: {}
 };
 
 // Pricing presets for prompt estimation
@@ -567,6 +570,7 @@ function renderDashboardProgress() {
     }
     document.getElementById("sync-time-claude").innerText = claudeLastSyncTime;
     setProgressRing("ring-claude", claudePct);
+    renderProfileChips("profile-chips-claude", "claude");
     
     // Estimate reset countdown for Claude
     let claudeTimePct = 0;
@@ -789,6 +793,7 @@ function renderDashboardProgress() {
     document.getElementById("sync-time-chatgpt").innerText = gptLastSyncTime;
     document.getElementById("timer-chatgpt").innerText = gptTimerText;
     setProgressRing("ring-chatgpt", gptPct);
+    renderProfileChips("profile-chips-chatgpt", "chatgpt");
 
     // Calculate ChatGPT 5h Pace Time Remaining
     let gptTimePct = 0;
@@ -1640,6 +1645,28 @@ function setupEventListeners() {
     if (btnDisableSync) {
         btnDisableSync.addEventListener("click", disableMobileSync);
     }
+
+    // Profiel-naam opslaan (beide knoppen: setup-state én active-state)
+    ["btn-save-profile-label", "btn-save-profile-label-active"].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.addEventListener("click", saveProfileLabel);
+    });
+
+    // Join existing sync (tweede Chrome-profiel)
+    const btnJoinSync = document.getElementById("btn-join-sync");
+    if (btnJoinSync) {
+        btnJoinSync.addEventListener("click", () => {
+            const joinPanel = document.getElementById("join-sync-panel");
+            if (joinPanel) joinPanel.style.display = joinPanel.style.display === "none" ? "block" : "none";
+        });
+    }
+    const btnSubmitJoin = document.getElementById("btn-submit-join-sync");
+    if (btnSubmitJoin) {
+        btnSubmitJoin.addEventListener("click", () => {
+            const input = document.getElementById("join-sync-url-input");
+            if (input && input.value.trim()) joinExistingSync(input.value.trim());
+        });
+    }
     
     const btnCopyKey = document.getElementById("btn-copy-pairing-key");
     if (btnCopyKey) {
@@ -1965,6 +1992,92 @@ let lastSyncTime = null;
 let retryCount = 0;
 let retryTimeoutId = null;
 
+/* --------------------------------------------------------------------------
+   MULTI-PROFILE AGGREGATIE
+   Combineert syncStatus van alle profielen in de bin tot één weergave.
+   De "slechtste" (laagste %) is leidend voor de hoofdring — zo zie je
+   meteen waar het knelt.
+   -------------------------------------------------------------------------- */
+function aggregateProfileSyncStatus(profiles) {
+    let bestClaude = null;   // laagste pctRemaining (meest kritiek)
+    let bestChatgpt = null;  // laagste pctRemaining5h
+
+    const staleThresholdMs = 6 * 60 * 60 * 1000; // 6 uur = stale
+    const now = Date.now();
+
+    for (const [, profile] of Object.entries(profiles)) {
+        const age = now - (profile.lastSeen || 0);
+        if (age > staleThresholdMs) continue; // Verouderd profiel overslaan
+
+        // Claude
+        if (profile.syncStatus && profile.syncStatus.claude) {
+            const c = profile.syncStatus.claude;
+            if (!bestClaude || (c.pctRemaining !== undefined && c.pctRemaining < (bestClaude.pctRemaining || 100))) {
+                bestClaude = { ...c };
+            }
+        }
+        // ChatGPT
+        if (profile.syncStatus && profile.syncStatus.chatgpt) {
+            const g = profile.syncStatus.chatgpt;
+            const gPct = g.pctRemaining5h !== undefined ? g.pctRemaining5h : 100;
+            const curPct = bestChatgpt && bestChatgpt.pctRemaining5h !== undefined ? bestChatgpt.pctRemaining5h : 100;
+            if (!bestChatgpt || gPct < curPct) {
+                bestChatgpt = { ...g };
+            }
+        }
+    }
+
+    return {
+        claude:  bestClaude  || null,
+        chatgpt: bestChatgpt || null
+    };
+}
+
+function renderProfileChips(elementId, model) {
+    const container = document.getElementById(elementId);
+    if (!container) return;
+
+    const profiles = state.cloudProfiles;
+    const profileIds = Object.keys(profiles || {});
+
+    // Niet tonen als er 0 of 1 profiel is (geen meerwaarde)
+    if (profileIds.length <= 1) {
+        container.innerHTML = "";
+        return;
+    }
+
+    const now = Date.now();
+    const staleMs = 6 * 60 * 60 * 1000;
+
+    container.innerHTML = profileIds.map(id => {
+        const p = profiles[id];
+        const age = now - (p.lastSeen || 0);
+        const stale = age > staleMs;
+        const label = p.label || id;
+        const initials = label.split(/[\s\-_]+/).map(w => w[0] || "").join("").toUpperCase().slice(0, 2) || "??";
+
+        let pct = null;
+        if (!stale && p.syncStatus) {
+            if (model === "claude" && p.syncStatus.claude) pct = p.syncStatus.claude.pctRemaining;
+            if (model === "chatgpt" && p.syncStatus.chatgpt) pct = p.syncStatus.chatgpt.pctRemaining5h;
+        }
+
+        let chipClass = "chip-grey";
+        if (pct !== null && pct !== undefined) {
+            if (pct > 50)      chipClass = "chip-green";
+            else if (pct > 20) chipClass = "chip-yellow";
+            else               chipClass = "chip-red";
+        }
+
+        const timeAgo = stale ? "stale" : formatTimeAgo(p.lastSeen);
+        const tooltip = `${label} · ${pct !== null ? pct + "% left" : "no data"} · ${timeAgo}`;
+
+        return `<span class="profile-chip ${chipClass}" title="${tooltip}">
+            <span class="chip-dot"></span>${initials}
+        </span>`;
+    }).join("");
+}
+
 // 2. Fetch and Render cloud sync data on Mobile clients
 function loadCloudUserData(isManual = false) {
     const syncClient = isSyncClient();
@@ -2000,7 +2113,15 @@ function loadCloudUserData(isManual = false) {
             state.userLogs = decryptedData.logs || [];
             state.userThreads = decryptedData.threads || [];
             state.userSettings = decryptedData.settings || state.userSettings;
-            state.syncStatus = decryptedData.syncStatus || { claude: null, chatgpt: null };
+
+            // Multi-profiel: sla alle profielen op en gebruik geaggregeerde syncStatus
+            if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
+                state.cloudProfiles = decryptedData.profiles;
+                state.syncStatus = aggregateProfileSyncStatus(decryptedData.profiles);
+            } else {
+                state.cloudProfiles = {};
+                state.syncStatus = decryptedData.syncStatus || { claude: null, chatgpt: null };
+            }
             
             lastSyncTime = Date.now();
             retryCount = 0; // reset retry teller bij succes
@@ -2320,8 +2441,16 @@ function renderMobileSyncSettings() {
     
     if (!connectionStatus) return;
     
-    DB.get(["lt_sync_config", "lt_pwa_host"], (res) => {
+    DB.get(["lt_sync_config", "lt_pwa_host", "lt_profile_id", "lt_profile_label"], (res) => {
         const config = res.lt_sync_config;
+        const myProfileId    = res.lt_profile_id    || null;
+        const myProfileLabel = res.lt_profile_label || "";
+
+        // Vul profiel-naam velden (setup + active-state versie) altijd in
+        ["sync-profile-label", "sync-profile-label-active"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && myProfileLabel) el.value = myProfileLabel;
+        });
 
         if (config && config.enabled) {
             connectionStatus.className = "badge badge-success";
@@ -2344,6 +2473,38 @@ function renderMobileSyncSettings() {
             // Vul het bewerkbare host-veld
             const hostInput = document.getElementById("sync-pwa-host");
             if (hostInput) hostInput.value = hostUrl;
+
+            // Render actieve profielen-lijst
+            const profilesContainer = document.getElementById("sync-active-profiles");
+            if (profilesContainer) {
+                const profiles = state.cloudProfiles || {};
+                const ids = Object.keys(profiles);
+                if (ids.length === 0) {
+                    profilesContainer.innerHTML = `<p style="font-size:0.75rem; color:var(--text-muted);">No other profiles have synced yet.</p>`;
+                } else {
+                    const now = Date.now();
+                    profilesContainer.innerHTML = ids.map(id => {
+                        const p = profiles[id];
+                        const isMe = id === myProfileId;
+                        const label = p.label || id;
+                        const timeAgo = formatTimeAgo(p.lastSeen);
+                        const stale = (now - (p.lastSeen || 0)) > 6 * 60 * 60 * 1000;
+                        const claudePct = p.syncStatus?.claude?.pctRemaining;
+                        const chatgptPct = p.syncStatus?.chatgpt?.pctRemaining5h;
+                        const dot = stale ? "⚫" : (claudePct !== undefined && claudePct < 20 ? "🔴" : claudePct !== undefined && claudePct < 50 ? "🟡" : "🟢");
+                        return `<div class="profile-list-item${isMe ? " this-device" : ""}">
+                            <div>
+                                <div class="profile-name">${dot} ${label}${isMe ? " <span style='font-size:0.65rem;color:var(--color-gemini);font-weight:400;'>(this device)</span>" : ""}</div>
+                                <div class="profile-meta">
+                                    Last seen: ${timeAgo}
+                                    ${claudePct !== undefined ? ` · Claude: ${claudePct}%` : ""}
+                                    ${chatgptPct !== undefined ? ` · ChatGPT: ${chatgptPct}%` : ""}
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join("");
+                }
+            }
         } else {
             connectionStatus.className = "badge";
             connectionStatus.innerText = "Not Paired";
@@ -2397,6 +2558,48 @@ function generateMobileSync() {
         btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;
         alert("Could not generate a pairing code. Check your internet connection and try again.");
     });
+}
+
+// 5b. Save profile label (stored in chrome.storage.local for extension, localStorage for PWA)
+function saveProfileLabel() {
+    // Beide inputs (setup-state en active-state) kunnen triggeren
+    const input = document.getElementById("sync-profile-label") || document.getElementById("sync-profile-label-active");
+    if (!input) return;
+    const label = input.value.trim() || "Profile";
+    DB.set({ lt_profile_label: label }, () => {
+        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
+        renderMobileSyncSettings();
+    });
+}
+
+// 5c. Join an existing sync bin from a second Chrome profile
+// Werkt hetzelfde als mobile pairing: sla config op en herlaad.
+function joinExistingSync(urlOrCode) {
+    try {
+        let key = null, bin = null, provider = "npoint";
+        if (urlOrCode.startsWith("http://") || urlOrCode.startsWith("https://")) {
+            const url = new URL(urlOrCode);
+            key = url.searchParams.get("key");
+            bin = url.searchParams.get("bin");
+            provider = url.searchParams.get("provider") || "npoint";
+        } else {
+            const params = new URLSearchParams(urlOrCode.includes("?") ? urlOrCode.split("?")[1] : urlOrCode);
+            key = params.get("key");
+            bin = params.get("bin");
+            provider = params.get("provider") || "npoint";
+        }
+        if (!key || !bin) {
+            alert("Invalid URL. Make sure it contains 'key' and 'bin' parameters.");
+            return;
+        }
+        const config = { enabled: true, pairingKey: key, binId: bin, provider };
+        DB.set({ lt_sync_config: config }, () => {
+            showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Joined sync! This Chrome profile will now push its data to the shared bin.`);
+            renderMobileSyncSettings();
+        });
+    } catch (e) {
+        alert("Could not parse the URL. Please paste the full pairing URL.");
+    }
 }
 
 // 6. Disable Mobile sync setup

@@ -12,9 +12,15 @@ chrome.action.onClicked.addListener(() => {
 
 // Initialize storage settings on install
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+    chrome.storage.local.get(["lt_users", "lt_current_user", "lt_profile_id"], (res) => {
         if (!res.lt_users) {
             chrome.storage.local.set({ lt_users: {} });
+        }
+        // Genereer een uniek profiel-ID voor dit Chrome-profiel als dat er nog niet is.
+        // Dit ID wordt gebruikt om data per profiel te naamruimten in de gedeelde cloud bin.
+        if (!res.lt_profile_id) {
+            const profileId = "pid-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 6);
+            chrome.storage.local.set({ lt_profile_id: profileId });
         }
     });
     ensureRemoteRefreshAlarm();
@@ -380,54 +386,89 @@ function triggerScrapeFromBackground(provider) {
 }
 
 function resetRemoteRefreshRequestFlagBG(config) {
-    chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
+    chrome.storage.local.get(["lt_users", "lt_current_user", "lt_profile_id", "lt_profile_label"], (res) => {
         const user = (res.lt_users || {})[res.lt_current_user];
         if (!user) return;
-        const dataToUpload = {
-            logs: user.logs || [],
-            threads: user.threads || [],
-            settings: user.settings || {},
-            syncStatus: user.syncStatus || {},
-            refreshRequested: false,
-            refreshRequestedAt: null
-        };
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
-        syncRelay(config).write(config.binId, { data: encryptedStr }).catch(() => {});
+
+        const profileId    = res.lt_profile_id    || "default";
+        const profileLabel = res.lt_profile_label || "Profile";
+
+        // Lees bestaande data, update dit profiel, reset vlag
+        syncRelay(config).read(config.binId)
+        .then(existing => {
+            let cloudDoc = {};
+            if (existing && existing.data) {
+                try { cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey)); } catch (e) {}
+            }
+            if (!cloudDoc.profiles) cloudDoc.profiles = {};
+            cloudDoc.profiles[profileId] = { label: profileLabel, syncStatus: user.syncStatus || {}, lastSeen: Date.now() };
+            cloudDoc.logs = user.logs || [];
+            cloudDoc.threads = user.threads || [];
+            cloudDoc.settings = user.settings || {};
+            cloudDoc.syncStatus = user.syncStatus || {};
+            cloudDoc.refreshRequested = false;
+            cloudDoc.refreshRequestedAt = null;
+            const encryptedStr = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+            return syncRelay(config).write(config.binId, { data: encryptedStr });
+        })
+        .catch(() => {});
     });
 }
 
 function pushUserDataToCloud(user) {
-    return new Promise((resolve, reject) => {
-        chrome.storage.local.get(["lt_sync_config"], (res) => {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(["lt_sync_config", "lt_profile_id", "lt_profile_label"], (res) => {
             const config = res.lt_sync_config;
             if (!config || !config.enabled || !config.binId || !config.pairingKey) {
                 logSync("[Cloud Sync] Overslaan: Geen actieve mobiele koppeling ingesteld.");
                 resolve();
                 return;
             }
-            
-            logSync(`[Cloud Sync] Uploaden van gegevens gestart voor bin: ${config.binId}...`);
-            
-            const dataToUpload = {
-                logs: user.logs || [],
-                threads: user.threads || [],
-                settings: user.settings || {},
-                syncStatus: user.syncStatus || {},
-                refreshRequested: false, // Reset remote trigger!
-                refreshRequestedAt: null
-            };
-            
-            const encryptedStr = CryptoSync.encrypt(JSON.stringify(dataToUpload), config.pairingKey);
 
-            syncRelay(config).write(config.binId, { data: encryptedStr })
+            const profileId    = res.lt_profile_id    || "default";
+            const profileLabel = res.lt_profile_label || "Profile";
+
+            logSync(`[Cloud Sync] Upload gestart (profiel: ${profileLabel}, bin: ${config.binId})...`);
+
+            // 1. Lees de huidige cloud-data zodat we andere profielen behouden (read-modify-write).
+            syncRelay(config).read(config.binId)
+            .then(existing => {
+                let cloudDoc = {};
+                if (existing && existing.data) {
+                    try {
+                        cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey));
+                    } catch (e) {
+                        logSync(`[Cloud Sync] Waarschuwing: bestaande data kon niet gelezen worden (${e.message}). Nieuw document aangemaakt.`);
+                    }
+                }
+
+                // 2. Werk dit profiel bij in het profiles-object.
+                if (!cloudDoc.profiles) cloudDoc.profiles = {};
+                cloudDoc.profiles[profileId] = {
+                    label:      profileLabel,
+                    syncStatus: user.syncStatus || {},
+                    lastSeen:   Date.now()
+                };
+
+                // 3. Houd legacy-velden bij voor backward-compat (mobiele clients zonder profiel-bewustzijn).
+                cloudDoc.logs             = user.logs     || [];
+                cloudDoc.threads          = user.threads  || [];
+                cloudDoc.settings         = user.settings || {};
+                cloudDoc.syncStatus       = user.syncStatus || {};
+                cloudDoc.refreshRequested    = false;
+                cloudDoc.refreshRequestedAt  = null;
+
+                // 4. Versleutelen en schrijven.
+                const encryptedStr = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+                return syncRelay(config).write(config.binId, { data: encryptedStr });
+            })
             .then(() => {
-                logSync(`[Cloud Sync] Gegevens succesvol geüpload naar cloud sync (bin: ${config.binId})!`);
+                logSync(`[Cloud Sync] Succesvol geüpload (profiel: ${profileLabel})!`);
                 resolve();
             })
             .catch(err => {
-                logSync(`[Cloud Sync FOUT] Upload naar cloud sync mislukt: ${err.message || err}`);
-                // We resolve anyway so that the message channel finishes gracefully
-                resolve();
+                logSync(`[Cloud Sync FOUT] Upload mislukt: ${err.message || err}`);
+                resolve(); // Altijd resolve voor graceful degradation
             });
         });
     });

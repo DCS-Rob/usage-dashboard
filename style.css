@@ -2020,3 +2020,49 @@ body.auth-view .app-container {
     -ms-user-select: text !important;
     pointer-events: auto !important;
 }
+
+/* ── Profile chips (multi-profile combined view) ── */
+.profile-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 8px;
+}
+.profile-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    cursor: default;
+    letter-spacing: 0.3px;
+}
+.chip-green  { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); color: #4ade80; }
+.chip-yellow { background: rgba(245,158,11,0.12);  border-color: rgba(245,158,11,0.3);  color: #fbbf24; }
+.chip-red    { background: rgba(239,68,68,0.12);   border-color: rgba(239,68,68,0.3);   color: #f87171; }
+.chip-grey   { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); color: var(--text-muted); }
+.chip-dot    { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.chip-green  .chip-dot { background: #4ade80; }
+.chip-yellow .chip-dot { background: #fbbf24; }
+.chip-red    .chip-dot { background: #f87171; }
+.chip-grey   .chip-dot { background: rgba(255,255,255,0.25); }
+
+/* ── Active profiles list in Settings ── */
+.profile-list-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+}
+.profile-list-item .profile-name { font-weight: 600; color: #fff; }
+.profile-list-item .profile-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+.profile-list-item.this-device { border-color: rgba(99,102,241,0.35); background: rgba(99,102,241,0.07); }
