@@ -168,6 +168,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.12.2** | 2026-06-01 | Deploy-sync lampje in header vergelijkt actieve app-versie met live GitHub Pages en meldt `Pages Live`, `Pages Behind` of `Deploy Unknown`. |
 | **0.12.1** | 2026-06-01 | Install-assistent voor invite-links zonder extensie: bestaande unpacked folder-route, GitHub ZIP-download en invite-link kopiëren voor na installatie. |
 | **0.12.0** | 2026-06-01 | Invite-flow voor extra Chrome-profielen: `join=1` links, extension accept-overlay via `chrome.scripting.executeScript`, PWA fallback-melding met GitHub repo-link. |
 | **0.8.0-beta.1** | 2026-05-29 | Beta veilige pairing: 256-bit `LT2` keys, URL-fragment pairing, lokale QR-generatie, AES-GCM `secureData` met legacy rollback-fallback. |

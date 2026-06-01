@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.1";
+const APP_VERSION = "0.12.2";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -11,6 +11,7 @@ const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
 // (bv. een eigen Tailscale-host voor volledig privé verkeer). Opgeslagen onder lt_pwa_host.
 const DEFAULT_PWA_HOST = "https://dcs-rob.github.io/usage-dashboard";
+const DEPLOY_VERSION_CHECK_URL = `${DEFAULT_PWA_HOST}/app.js`;
 
 // Build info strip: toont versie, SW-cache, omgeving en (laatste 6 chars van) binId
 // zodat de gebruiker visueel kan verifiëren of PC en telefoon dezelfde bin gebruiken.
@@ -170,6 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setupEventListeners();
     initApp();
     initQRScanner();
+    setTimeout(checkDeploySyncStatus, 1200);
     // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
     // (zie nav-tab click handler in setupEventListeners). Doe één rendering
     // bij start zodat het slot meteen gevuld is als gebruiker daar al staat.
@@ -212,6 +214,52 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+async function checkDeploySyncStatus() {
+    const indicator = document.getElementById("deploy-sync-indicator");
+    if (!indicator) return;
+
+    setDeploySyncIndicator("checking", "Checking Deploy", "Checking whether GitHub Pages is running this version...");
+
+    try {
+        const response = await fetch(`${DEPLOY_VERSION_CHECK_URL}?deployCheck=${Date.now()}`, {
+            cache: "no-store",
+            credentials: "omit"
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const remoteCode = await response.text();
+        const match = remoteCode.match(/const\s+APP_VERSION\s*=\s*["']([^"']+)["']/);
+        const deployedVersion = match ? match[1] : "";
+        if (!deployedVersion) throw new Error("Version not found");
+
+        if (deployedVersion === APP_VERSION) {
+            setDeploySyncIndicator("ok", "Pages Live", `GitHub Pages is in sync: v${deployedVersion}`);
+        } else {
+            setDeploySyncIndicator(
+                "warning",
+                "Pages Behind",
+                `This app is v${APP_VERSION}, but GitHub Pages is still v${deployedVersion}. Push main and wait for the Pages workflow to finish, then refresh.`
+            );
+        }
+    } catch (err) {
+        setDeploySyncIndicator(
+            "unknown",
+            "Deploy Unknown",
+            `Could not check GitHub Pages deploy status. Check GitHub Actions, or verify that main has been pushed.`
+        );
+    }
+}
+
+function setDeploySyncIndicator(status, label, detail) {
+    const indicator = document.getElementById("deploy-sync-indicator");
+    if (!indicator) return;
+    const text = indicator.querySelector(".deploy-sync-label");
+    indicator.dataset.status = status;
+    indicator.title = detail;
+    indicator.setAttribute("aria-label", detail);
+    if (text) text.textContent = label;
+}
 
 // Intercept background messages if running in Chrome Extension mode
 if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {

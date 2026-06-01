@@ -4,6 +4,20 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.2] — 2026-06-01
+
+### Toegevoegd
+- **Deploy-sync indicator in de dashboard-header**: klein statuslampje vergelijkt de actieve app-versie met de live GitHub Pages `app.js`.
+- Statussen:
+  - `Pages Live`: GitHub Pages draait dezelfde versie als de geopende app.
+  - `Pages Behind`: lokale/extension code is nieuwer dan GitHub Pages; push `main`, wacht op de Pages workflow en refresh.
+  - `Deploy Unknown`: status kon niet worden gecontroleerd; controleer GitHub Actions of netwerktoegang.
+
+### Gewijzigd
+- Service Worker cache en asset querystrings gebumpt naar `0.12.2`.
+
+---
+
 ## [0.12.1] — 2026-06-01
 
 ### Toegevoegd
