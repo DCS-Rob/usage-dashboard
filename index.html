@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.15.1">
+    <link rel="stylesheet" href="style.css?v=0.16.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -278,6 +278,9 @@
                             <div id="add-profile-qr" style="text-align:center;margin-top:4px;"></div>
                         </div>
                     </div>
+
+                    <!-- Restore-balk voor handmatig verborgen blokken (enkel-profiel weergave) -->
+                    <div id="static-restore-bar" class="mp-restore-bar" style="display:none;"></div>
 
                     <div class="dashboard-grid">
 
@@ -975,6 +978,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.15.1"></script>
+    <script src="app.js?v=0.16.0"></script>
 </body>
 </html>

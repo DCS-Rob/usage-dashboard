@@ -4,6 +4,17 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.16.0] — 2026-06-02
+
+### Gewijzigd — slimmere zichtbaarheid (logischere werkwijze)
+- **Blokken verschijnen automatisch op basis van data**: een provider-card toont alleen als dat profiel er daadwerkelijk data voor heeft (= ingelogd / usage-pagina geopend). Een vers Chrome-profiel start dus met alleen de blokken waar je op bent ingelogd; open je `chatgpt.com analytics` of de Codex-pagina, dan komt dat blok erbij. Geen Gemini-blok meer als je Gemini niet gebruikt.
+- **Verberg-knop (oogje) ook in de enkel-profiel weergave**: elke statische card heeft nu een verberg-knopje naast de badge. Verborgen blokken verschijnen als herstel-chip boven de grid.
+- **Per-profiel verbergen werkt consistent door**: een blok dat je voor een specifiek profiel verbergt, blijft ook weg in "All profiles" (en komt niet vanzelf terug).
+- "All profiles" toont nog steeds alle accounts van alle profielen.
+
+### Technisch
+- `hasProviderData()` bepaalt auto-zichtbaarheid; `getCurrentProfileContext()` levert het juiste profiel voor de statische weergave; `isBlockVisible()` is nu puur de globale Settings-toggle; per-profiel verbergen via `localStorage` (`lt_local_hidden`).
+
 ## [0.15.1] — 2026-06-01
 
 ### Opgelost / verbeterd

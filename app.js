@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.15.1";
+const APP_VERSION = "0.16.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -666,25 +666,96 @@ function normalizeUserSettings(s) {
     return s;
 }
 
-// Bepaalt of een blok zichtbaar moet zijn. Combineert de globale schakelaar
-// (state.userSettings.visibleBlocks) met een eventuele per-profiel override.
-// profileId === null betekent: gebruik alleen de globale instelling.
-function isBlockVisible(provider, profileId = null) {
-    const global = (state.userSettings.visibleBlocks || {})[provider];
-    if (global === false) return false;
-    if (profileId && state.cloudProfiles && state.cloudProfiles[profileId]) {
-        const ov = state.cloudProfiles[profileId].visibleBlocks;
-        if (ov && ov[provider] === false) return false;
-    }
-    return true;
+// Globale schakelaar (Settings → Visible Blocks). Harde uit-zetter voor het hele dashboard.
+function isBlockVisible(provider) {
+    return (state.userSettings.visibleBlocks || {})[provider] !== false;
 }
 
-// Past de globale blok-zichtbaarheid toe op de statische dashboard-cards.
+// Heeft dit profiel daadwerkelijk data voor deze provider? (= ingelogd / pagina geopend)
+// Bepaalt of een blok standaard verschijnt — geen data → niet tonen.
+function hasProviderData(provider, syncStatus, logs) {
+    syncStatus = syncStatus || {};
+    logs = logs || [];
+    if (provider === "claude")  return !!syncStatus.claude  || logs.some(l => l.model === "claude");
+    if (provider === "chatgpt") return !!syncStatus.chatgpt || logs.some(l => l.model === "chatgpt");
+    if (provider === "codex")   return !!syncStatus.codex;
+    if (provider === "gemini")  return !!syncStatus.gemini  || logs.some(l => l.model === "gemini");
+    return false;
+}
+
+// Welke profielcontext toont de enkel-profiel (statische) weergave nu?
+function getCurrentProfileContext() {
+    const pid = state.selectedProfileId;
+    if (pid && state.cloudProfiles && state.cloudProfiles[pid]) {
+        return { profileId: pid, syncStatus: state.cloudProfiles[pid].syncStatus || {}, logs: [], isMe: false };
+    }
+    return { profileId: state.myProfileId || "me", syncStatus: state.syncStatus || {}, logs: state.userLogs || [], isMe: true };
+}
+
+// Past zichtbaarheid toe op de statische cards:
+//  - automatisch verbergen als er geen data is (alleen tonen waar je op ingelogd bent)
+//  - respecteert de globale Settings-toggle én de per-profiel handmatige verberging
 function applyBlockVisibility() {
+    const ctx = getCurrentProfileContext();
     const map = { claude: "card-claude", chatgpt: "card-chatgpt", codex: "card-codex", gemini: "card-gemini" };
+    const hiddenWithData = [];
     Object.keys(map).forEach(provider => {
         const el = document.getElementById(map[provider]);
-        if (el) el.style.display = isBlockVisible(provider) ? "" : "none";
+        if (!el) return;
+        const dataPresent = hasProviderData(provider, ctx.syncStatus, ctx.logs);
+        const globalOff   = !isBlockVisible(provider);
+        const localHidden = isLocallyHidden(ctx.profileId, provider);
+        el.style.display = (dataPresent && !globalOff && !localHidden) ? "" : "none";
+        // Werk de pid bij op de (geïnjecteerde) verberg-knop van deze card
+        const hb = el.querySelector(".block-hide-btn");
+        if (hb) hb.setAttribute("data-pid", ctx.profileId);
+        // Handmatig verborgen maar wél data → aanbieden om te herstellen
+        if (dataPresent && !globalOff && localHidden) hiddenWithData.push(provider);
+    });
+    renderStaticRestoreBar(ctx.profileId, hiddenWithData);
+}
+
+// Voegt één keer een verberg-knop (oogje) toe aan elke statische card.
+function addStaticHideButtons() {
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", codex: "card-codex", gemini: "card-gemini" };
+    Object.keys(map).forEach(provider => {
+        const card = document.getElementById(map[provider]);
+        if (!card) return;
+        const header = card.querySelector(".provider-header");
+        if (!header || header.querySelector(".block-hide-btn")) return;
+        const btn = document.createElement("button");
+        btn.className = "block-hide-btn";
+        btn.title = "Hide this block in this profile's view";
+        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
+        btn.addEventListener("click", () => {
+            const pid = btn.getAttribute("data-pid") || (state.myProfileId || "me");
+            setLocalHidden(pid, provider, true);
+            applyBlockVisibility();
+        });
+        // Groepeer de bestaande badge + de knop rechts in de header
+        const badge = header.querySelector(".badge");
+        const actions = document.createElement("div");
+        actions.className = "provider-header-actions";
+        actions.style.cssText = "display:flex;align-items:center;gap:8px;flex-shrink:0;";
+        if (badge) actions.appendChild(badge);
+        actions.appendChild(btn);
+        header.appendChild(actions);
+    });
+}
+
+// Herstel-balk boven de enkel-profiel grid voor handmatig verborgen blokken.
+function renderStaticRestoreBar(profileId, providers) {
+    const bar = document.getElementById("static-restore-bar");
+    if (!bar) return;
+    if (!providers.length) { bar.style.display = "none"; bar.innerHTML = ""; return; }
+    bar.style.display = "flex";
+    bar.innerHTML = `<span style="color:var(--text-muted);font-size:0.78rem;margin-right:6px;"><i class="fa-solid fa-eye-slash"></i> Hidden in this profile:</span>` +
+        providers.map(p => `<button class="mp-restore-chip" data-restore-provider="${p}">${PROVIDER_META[p].name} <i class="fa-solid fa-rotate-left"></i></button>`).join("");
+    bar.querySelectorAll(".mp-restore-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+            setLocalHidden(profileId, btn.getAttribute("data-restore-provider"), false);
+            applyBlockVisibility();
+        });
     });
 }
 
@@ -1941,8 +2012,9 @@ function setupEventListeners() {
         });
     });
 
-    // K2. Visible-block toggles
+    // K2. Visible-block toggles + per-card verberg-knoppen
     initVisibleBlockToggles();
+    addStaticHideButtons();
 
     // L. Settings Import / Export JSON
     document.getElementById("btn-export-data").addEventListener("click", () => {
@@ -2675,6 +2747,7 @@ function renderProfileBar() {
                 state.selectedProfileId = (pid === "all") ? null : pid;
                 renderProfileBar();
                 renderDashboardProgress();
+                applyBlockVisibility();
                 renderMultiProfileCards();
                 updateScraperStatusLabels();
             });
