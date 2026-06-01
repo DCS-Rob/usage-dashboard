@@ -4,6 +4,16 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.15.0] — 2026-06-01
+
+### Toegevoegd
+- **Card per profiel-abonnement (gecombineerde weergave)**: in "All profiles" toont het dashboard nu één losse card per (profiel × abonnement) in plaats van de RD/P-chips. Voorbeeld: Claude (Rob-Personal), ChatGPT (Rob-Personal), Codex (Rob-Personal), Claude (Rob-DCS)… Elke card heeft eigen ring, percentages en "last seen".
+- **Per-profiel verbergen (lokaal)**: eye-slash knop op elke card verbergt dat blok in jouw eigen weergave. Verborgen blokken verschijnen als herstel-chips bovenaan de grid. Opgeslagen in `localStorage` (niet gesynchroniseerd).
+- Klik op een profiel-tab → terug naar de rijke statische cards, gefilterd op dat profiel.
+
+### Gewijzigd
+- RD/P profiel-chips verwijderd (vervangen door losse cards).
+
 ## [0.14.0] — 2026-06-01
 
 ### Toegevoegd

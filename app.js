@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.14.0";
+const APP_VERSION = "0.15.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -792,6 +792,7 @@ function updateUI() {
     renderGettingStartedBanner();
     applyBlockVisibility();
     renderVisibleBlockToggles();
+    renderMultiProfileCards();
 }
 
 // 1. Calculate and Render Limits Helper
@@ -2487,9 +2488,12 @@ function aggregateProfileSyncStatus(profiles) {
 }
 
 function renderProfileChips(elementId, model) {
+    // Chips zijn vervangen door losse cards per profiel-abonnement (multi-profiel grid).
+    // We laten de container altijd leeg.
     const container = document.getElementById(elementId);
-    if (!container) return;
-
+    if (container) container.innerHTML = "";
+    return;
+    // eslint-disable-next-line no-unreachable
     const profiles = state.cloudProfiles;
     const profileIds = Object.keys(profiles || {});
 
@@ -2609,6 +2613,10 @@ function renderProfileBar() {
         const myId = res.lt_profile_id;
         const myLabel = res.lt_profile_label || "This profile";
 
+        // Cache voor de (synchrone) multi-profiel renderer
+        state.myProfileId = myId || null;
+        state.myProfileLabel = myLabel;
+
         if (!hasSyncConfig && profileIds.length === 0) {
             bar.style.display = "none";
             return;
@@ -2667,6 +2675,7 @@ function renderProfileBar() {
                 state.selectedProfileId = (pid === "all") ? null : pid;
                 renderProfileBar();
                 renderDashboardProgress();
+                renderMultiProfileCards();
                 updateScraperStatusLabels();
             });
         });
@@ -2689,6 +2698,202 @@ function renderProfileBar() {
     });
 }
 
+/* ==========================================================================
+   MULTI-PROFILE GRID — één card per (profiel × abonnement) in de "All"-weergave
+   ========================================================================== */
+const PROVIDER_META = {
+    claude:  { name: "Claude Pro",       meta: "Anthropic",       icon: "fa-compass-drafting",    cls: "claude" },
+    chatgpt: { name: "ChatGPT Business", meta: "OpenAI",          icon: "fa-robot",               cls: "chatgpt" },
+    codex:   { name: "Codex",            meta: "OpenAI • Monthly", icon: "fa-terminal",            cls: "codex" },
+    gemini:  { name: "Gemini Advanced",  meta: "Google",          icon: "fa-wand-magic-sparkles", cls: "gemini" }
+};
+const PROVIDER_ORDER = ["claude", "chatgpt", "codex", "gemini"];
+
+// Lokale (niet-gesynchroniseerde) per-profiel verbergvoorkeur.
+function getLocalHiddenMap() {
+    try { return JSON.parse(localStorage.getItem("lt_local_hidden") || "{}"); } catch (e) { return {}; }
+}
+function setLocalHidden(pid, provider, hidden) {
+    const map = getLocalHiddenMap();
+    const key = `${pid}|${provider}`;
+    if (hidden) map[key] = true; else delete map[key];
+    try { localStorage.setItem("lt_local_hidden", JSON.stringify(map)); } catch (e) {}
+}
+function isLocallyHidden(pid, provider) {
+    return !!getLocalHiddenMap()[`${pid}|${provider}`];
+}
+
+// Combineert het eigen profiel + alle cloud-profielen tot één lijst.
+function getAllProfilesForGrid() {
+    const out = [];
+    const cloud = state.cloudProfiles || {};
+    const myId = state.myProfileId;
+    if (myId) {
+        out.push({
+            id: myId,
+            label: state.myProfileLabel || "This device",
+            syncStatus: state.syncStatus || {},
+            lastSeen: (cloud[myId] && cloud[myId].lastSeen) || Date.now(),
+            isMe: true
+        });
+    }
+    Object.keys(cloud).forEach(id => {
+        if (id === myId) return;
+        out.push({
+            id,
+            label: cloud[id].label || id,
+            syncStatus: cloud[id].syncStatus || {},
+            lastSeen: cloud[id].lastSeen || 0,
+            isMe: false
+        });
+    });
+    return out;
+}
+
+// Bouwt één compacte snapshot-card voor een (profiel × provider) combinatie.
+function buildSnapshotCard(provider, profile) {
+    const meta = PROVIDER_META[provider];
+    const sync = (profile.syncStatus || {})[provider];
+    if (!meta || !sync) return "";
+
+    // Primair percentage per provider
+    let pct = null;
+    let lines = "";
+    const fmtPct = v => (v === undefined || v === null) ? "—" : `${Math.round(v)}%`;
+
+    if (provider === "claude") {
+        pct = sync.pctRemaining;
+        lines = `<div class="mp-line">Session: <b>${fmtPct(sync.pctRemaining)}</b></div>
+                 <div class="mp-line">Weekly: <b>${fmtPct(sync.pctRemainingWeekly)}</b></div>`;
+    } else if (provider === "chatgpt") {
+        pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
+        lines = `<div class="mp-line">5h: <b>${fmtPct(sync.pctRemaining5h)}</b></div>
+                 <div class="mp-line">Weekly: <b>${fmtPct(sync.pctRemainingWeekly)}</b></div>`;
+    } else if (provider === "codex") {
+        pct = sync.pctRemainingMonthly;
+        const reset = (sync.resetMonthly || "").replace(/^(?:resets?|herstelt)\s*/i, "").trim();
+        lines = `<div class="mp-line">Monthly: <b>${fmtPct(sync.pctRemainingMonthly)}</b></div>
+                 ${reset ? `<div class="mp-line mp-sub">Reset ${escapeHtmlSafe(reset)}</div>` : ""}`;
+    } else if (provider === "gemini") {
+        pct = sync.limitReached ? 0 : 100;
+        lines = `<div class="mp-line">${sync.limitReached ? "<b style='color:#f87171'>Limit reached</b>" : "Active"}</div>`;
+    }
+
+    const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
+    const r = 54, circ = 2 * Math.PI * r;
+    const offset = circ - (pctNum / 100) * circ;
+    const lastSeen = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+
+    return `
+    <div class="glass-panel provider-card ${meta.cls}-card mp-card">
+        <button class="mp-hide" data-mp-pid="${profile.id}" data-mp-provider="${provider}" title="Hide this block in your view">
+            <i class="fa-solid fa-eye-slash"></i>
+        </button>
+        <div class="provider-header">
+            <div class="provider-title">
+                <div class="brand-icon-wrapper ${meta.cls}"><i class="fa-solid ${meta.icon}"></i></div>
+                <div>
+                    <h3>${meta.name}</h3>
+                    <span class="provider-meta">${escapeHtmlSafe(profile.label)}${profile.isMe ? " <i class='fa-solid fa-desktop' style='opacity:0.6;font-size:0.7rem;'></i>" : ""}</span>
+                </div>
+            </div>
+        </div>
+        <div class="progress-visualization">
+            <div class="progress-ring-container" style="width:120px;height:120px;">
+                <svg class="progress-ring" width="120" height="120">
+                    <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.04)" stroke-width="10" fill="transparent" r="${r}" cx="60" cy="60"/>
+                    <circle class="progress-ring__circle ${meta.cls}-stroke" stroke-width="10" fill="transparent" r="${r}" cx="60" cy="60"
+                        style="stroke-dasharray:${circ} ${circ}; stroke-dashoffset:${offset};"/>
+                </svg>
+                <div class="progress-value">
+                    <span class="pct" style="font-size:1.4rem;">${fmtPct(pct)}</span>
+                    <span class="lbl">Left</span>
+                </div>
+            </div>
+        </div>
+        <div class="card-stats mp-stats">
+            ${lines}
+            <div class="mp-line mp-sub"><i class="fa-solid fa-clock" style="opacity:0.5;"></i> ${lastSeen}</div>
+        </div>
+    </div>`;
+}
+
+// Eenvoudige HTML-escape voor labels/resetteksten.
+function escapeHtmlSafe(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Beslist tussen statische cards (1 profiel) en multi-grid (alle profielen),
+// en vult de multi-grid met één card per (profiel × abonnement met data).
+function renderMultiProfileCards() {
+    const multiGrid = document.getElementById("multi-profile-grid");
+    const staticGrid = document.querySelector(".dashboard-grid:not(#multi-profile-grid)");
+    if (!multiGrid || !staticGrid) return;
+
+    const profiles = getAllProfilesForGrid();
+    const combined = (state.selectedProfileId === null) && profiles.length >= 2;
+
+    if (!combined) {
+        // Enkel profiel of maar één profiel: gebruik de bestaande rijke statische cards.
+        multiGrid.style.display = "none";
+        multiGrid.innerHTML = "";
+        staticGrid.style.display = "";
+        return;
+    }
+
+    // Gecombineerde weergave: verberg de statische cards, toon de multi-grid.
+    staticGrid.style.display = "none";
+    multiGrid.style.display = "";
+
+    let cards = "";
+    const hiddenRestore = [];
+    profiles.forEach(profile => {
+        PROVIDER_ORDER.forEach(provider => {
+            const sync = (profile.syncStatus || {})[provider];
+            if (!sync) return;                                  // geen data → geen card
+            if (!isBlockVisible(provider)) return;              // globaal verborgen
+            if (isLocallyHidden(profile.id, provider)) {        // lokaal verborgen → restore-chip
+                hiddenRestore.push({ pid: profile.id, provider, label: profile.label });
+                return;
+            }
+            cards += buildSnapshotCard(provider, profile);
+        });
+    });
+
+    if (!cards) {
+        cards = `<div class="glass-panel" style="grid-column:1/-1; text-align:center; padding:30px; color:var(--text-muted);">
+            <i class="fa-solid fa-circle-info" style="font-size:1.5rem; opacity:0.4;"></i>
+            <p style="margin-top:10px;">No subscription data yet. Open the usage pages in each Chrome profile to populate the dashboard.</p>
+        </div>`;
+    }
+
+    // Restore-balk voor lokaal verborgen blokken
+    let restoreBar = "";
+    if (hiddenRestore.length > 0) {
+        restoreBar = `<div class="mp-restore-bar" style="grid-column:1/-1;">
+            <span style="color:var(--text-muted); font-size:0.78rem; margin-right:6px;"><i class="fa-solid fa-eye-slash"></i> Hidden:</span>
+            ${hiddenRestore.map(h => `<button class="mp-restore-chip" data-mp-restore-pid="${h.pid}" data-mp-restore-provider="${h.provider}">${escapeHtmlSafe(h.label)} · ${PROVIDER_META[h.provider].name} <i class="fa-solid fa-rotate-left"></i></button>`).join("")}
+        </div>`;
+    }
+
+    multiGrid.innerHTML = restoreBar + cards;
+
+    // Hide-knoppen
+    multiGrid.querySelectorAll(".mp-hide").forEach(btn => {
+        btn.addEventListener("click", () => {
+            setLocalHidden(btn.getAttribute("data-mp-pid"), btn.getAttribute("data-mp-provider"), true);
+            renderMultiProfileCards();
+        });
+    });
+    // Restore-chips
+    multiGrid.querySelectorAll(".mp-restore-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+            setLocalHidden(btn.getAttribute("data-mp-restore-pid"), btn.getAttribute("data-mp-restore-provider"), false);
+            renderMultiProfileCards();
+        });
+    });
+}
+
 function loadCloudProfilesForDesktop() {
     if (isSyncClient()) return; // Alleen desktop
     DB.get(["lt_sync_config"], (res) => {
@@ -2701,6 +2906,7 @@ function loadCloudProfilesForDesktop() {
                 if (doc.profiles && Object.keys(doc.profiles).length > 0) {
                     state.cloudProfiles = doc.profiles;
                     renderProfileBar();
+                    renderMultiProfileCards();
                 }
             } catch (e) {}
         }).catch(() => {});

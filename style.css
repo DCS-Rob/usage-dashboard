@@ -2260,6 +2260,31 @@ body.auth-view .app-container {
 }
 .profile-tab:hover .ptab-delete { opacity: 1; }
 .profile-tab .ptab-delete:hover { color: #f87171; }
+/* Multi-profile snapshot cards */
+.mp-card { position: relative; }
+.mp-card .mp-hide {
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.4); width: 26px; height: 26px; border-radius: 6px;
+    cursor: pointer; font-size: 0.72rem; transition: all 0.15s;
+    display: flex; align-items: center; justify-content: center;
+}
+.mp-card:hover .mp-hide { color: rgba(255,255,255,0.7); }
+.mp-card .mp-hide:hover { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.4); color: #f87171; }
+.mp-stats { display: flex; flex-direction: column; gap: 4px; }
+.mp-line { font-size: 0.82rem; color: var(--text-light, #d1d5db); }
+.mp-line b { color: #fff; }
+.mp-line.mp-sub { font-size: 0.72rem; color: var(--text-muted); }
+.mp-restore-bar {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 8px 4px; margin-bottom: 4px;
+}
+.mp-restore-chip {
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.65); padding: 4px 10px; border-radius: 999px;
+    font-size: 0.74rem; cursor: pointer; transition: all 0.15s;
+}
+.mp-restore-chip:hover { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.4); color: #fff; }
 .visible-blocks-list {
     display: flex; flex-direction: column; gap: 10px;
 }

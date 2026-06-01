@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.14.0">
+    <link rel="stylesheet" href="style.css?v=0.15.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -633,6 +633,9 @@
 
                     </div>
 
+                    <!-- MULTI-PROFILE GRID (combined "All profiles" view: one card per profile × subscription) -->
+                    <div class="dashboard-grid" id="multi-profile-grid" style="display:none;"></div>
+
                     <!-- LIVE LOG FEED (Full Width) -->
                     <div class="dashboard-secondary-grid">
                         <div class="glass-panel detail-card">
@@ -972,6 +975,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.14.0"></script>
+    <script src="app.js?v=0.15.0"></script>
 </body>
 </html>
