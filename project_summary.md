@@ -2,7 +2,7 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.12.9**
+**Huidige versie: 0.13.2**
 
 ---
 
@@ -204,6 +204,9 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.13.2** | 2026-06-01 | `saveDashboardProfileName` herschreven; mobile client loading spinner + retry; cloud profiles direct laden bij extensie start; invite overlay naam-validatie; open-source commentaar PWA_INVITE_HOST. |
+| **0.13.1** | 2026-06-01 | Getting started banner + lege-staat helpers op kaarten + "Add profile" label. |
+| **0.13.0** | 2026-06-01 | Auto-login extensiemodus; geen login-scherm meer; saveProfileLabel hernoemt lt_current_user. |
 | **0.12.9** | 2026-06-01 | `try/finally` rondom syncStatus override in `renderDashboardProgress`; 60s periodieke cloud-profiel refresh op desktop. |
 | **0.12.8** | 2026-06-01 | Invite install-assistent kan via veilige `externally_connectable` ping zien of de vaste extensie-ID in dit Chrome-profiel aanwezig is en dan reload-instructies tonen. |
 | **0.12.7** | 2026-06-01 | Invite/install flow verduidelijkt dat unpacked extensions per Chrome-profiel handmatig herladen moeten worden; accept-overlay toont reload-hint bij login fallback. |

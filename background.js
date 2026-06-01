@@ -4,6 +4,11 @@
 
 // Firebase Realtime Database REST-endpoint
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
+
+// ── Open-source configuratie ──────────────────────────────────────────────
+// Pas deze twee regels aan als je een eigen fork host op een andere domein.
+// PWA_INVITE_HOST: alleen de hostname (geen https://)
+// PWA_INVITE_PATH: het pad naar de app op die host
 const PWA_INVITE_HOST = "dcs-rob.github.io";
 const PWA_INVITE_PATH = "/usage-dashboard";
 
@@ -191,7 +196,8 @@ function showInviteOverlay(invite) {
 
     const input = document.createElement("input");
     input.type = "text";
-    input.value = "Profile";
+    input.value = "";
+    input.placeholder = "e.g. Rob – Personal";
     input.style.cssText = [
         "width:100%",
         "box-sizing:border-box",
@@ -219,6 +225,14 @@ function showInviteOverlay(invite) {
     accept.textContent = "Accept";
     accept.style.cssText = "padding:10px 16px;border-radius:8px;border:0;background:linear-gradient(135deg,#06b6d4,#6366f1);color:#fff;font-weight:700;cursor:pointer";
     accept.addEventListener("click", () => {
+        const labelVal = (input.value || "").trim();
+        if (!labelVal) {
+            input.style.borderColor = "rgba(239,68,68,.8)";
+            input.placeholder = "Please enter your name first";
+            input.focus();
+            return;
+        }
+        input.style.borderColor = "";
         accept.disabled = true;
         accept.textContent = "Connecting...";
         chrome.runtime.sendMessage({
@@ -226,7 +240,7 @@ function showInviteOverlay(invite) {
             key: invite.key,
             bin: invite.bin,
             provider: invite.provider || "npoint",
-            label: (input.value || "").trim() || "Profile"
+            label: labelVal
         }, (response) => {
             if (response && response.status === "success") {
                 overlay.remove();

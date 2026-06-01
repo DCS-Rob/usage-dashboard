@@ -386,8 +386,15 @@ function initApp() {
         // Hide elements that are read-only / not applicable on mobile PWA
         applyMobileSyncUI();
 
-        // Load cloud sync data
+        // Toon "Loading..." op de kaarten zodat gebruiker weet dat data onderweg is
+        ["sync-time-claude", "sync-time-chatgpt"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = `<i class="fa-solid fa-spinner fa-spin" style="font-size:0.75rem;opacity:0.6;"></i> Loading…`;
+        });
+
+        // Load cloud sync data — eerste poging direct, retry na 2s voor trage verbindingen
         loadCloudUserData();
+        setTimeout(() => { if (!state.syncStatus?.claude) loadCloudUserData(); }, 2000);
         renderProfileBar();
 
         // Auto-refresh from cloud every 25 seconds
@@ -410,6 +417,8 @@ function initApp() {
                 state.currentUser = res.lt_current_user;
                 showView("dashboard");
                 loadUserData();
+                // Direct cloud-profielen laden zodat de profiel-balk meteen alle profielen toont
+                loadCloudProfilesForDesktop();
                 return;
             }
 
@@ -2613,17 +2622,42 @@ function closeAddProfilePanel() {
 
 function saveDashboardProfileName() {
     const input = document.getElementById("dashboard-profile-name");
-    if (!input) return;
-    const label = input.value.trim() || "My Profile";
-    // Hergebruik saveProfileLabel-logica (inclusief gebruiker-hernoemen in extensiemodus)
-    const fakeInput = { value: label };
-    const origInput = document.getElementById("sync-profile-label");
-    if (origInput) origInput.value = label;
-    saveProfileLabel();
-    // Sync overige label-inputs
-    ["sync-profile-label", "sync-profile-label-active"].forEach(id => {
+    if (!input || !input.value.trim()) return;
+    const label = input.value.trim();
+
+    // Sync alle label-inputs zodat ze allemaal hetzelfde tonen
+    ["sync-profile-label", "sync-profile-label-active", "dashboard-profile-name"].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.value = label;
+    });
+
+    // Directe opslag — geen indirecte koppeling via settings-input meer
+    DB.set({ lt_profile_label: label }, () => {
+        if (DB.isExtension && state.currentUser && state.currentUser !== label) {
+            DB.get(["lt_users"], (res) => {
+                const users = res.lt_users || {};
+                if (users[state.currentUser] && !users[label]) {
+                    users[label] = users[state.currentUser];
+                    delete users[state.currentUser];
+                } else if (!users[label]) {
+                    users[label] = createDefaultUserProfile(null);
+                }
+                DB.set({ lt_users: users, lt_current_user: label }, () => {
+                    state.currentUser = label;
+                    document.getElementById("display-username") && (document.getElementById("display-username").innerText = label);
+                    showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
+                    renderProfileBar();
+                    renderMobileSyncSettings();
+                    renderGettingStartedBanner();
+                });
+            });
+        } else {
+            document.getElementById("display-username") && (document.getElementById("display-username").innerText = label);
+            showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
+            renderProfileBar();
+            renderMobileSyncSettings();
+            renderGettingStartedBanner();
+        }
     });
 }
 

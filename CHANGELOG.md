@@ -4,6 +4,27 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.13.2] — 2026-06-01
+
+### Opgelost / verbeterd
+- **`saveDashboardProfileName` herschreven**: directe opslag via `DB.set` i.p.v. fragiele koppeling via een verborgen settings-input. Hernoemt ook `lt_current_user` en `lt_users` zodat alles synchroon loopt.
+- **Mobile client laadtijd**: kaarten tonen "Loading…" spinner tijdens Firebase fetch; automatische retry na 2s voor trage verbindingen.
+- **Extension auto-login**: roept direct `loadCloudProfilesForDesktop()` aan zodat de profiel-balk meteen alle profielen toont na eerste opening.
+- **Invite overlay**: naam-veld leeg bij openen (placeholder "e.g. Rob – Personal") zodat gebruiker bewust een naam kiest. Accept-knop blokkeert als naam leeg is.
+- **PWA_INVITE_HOST**: open-source commentaar toegevoegd in `background.js`.
+
+## [0.13.1] — 2026-06-01
+
+### Toegevoegd
+- Getting started banner, lege-staat helpers op kaarten, "Add profile" knop label.
+
+## [0.13.0] — 2026-06-01
+
+### Gewijzigd
+- Auto-login in extensiemodus, geen login-scherm meer. `saveProfileLabel` hernoemt ook `lt_current_user`.
+
+---
+
 ## [0.12.8] — 2026-06-01
 
 ### Toegevoegd
