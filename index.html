@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.16.0">
+    <link rel="stylesheet" href="style.css?v=0.17.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -282,6 +282,12 @@
                     <!-- Restore-balk voor handmatig verborgen blokken (enkel-profiel weergave) -->
                     <div id="static-restore-bar" class="mp-restore-bar" style="display:none;"></div>
 
+                    <!-- Blok toevoegen: opent de inlog/usage-pagina van een provider -->
+                    <div id="add-block-row" style="margin: 2px 0 14px;">
+                        <button id="btn-add-block" class="btn-add-block"><i class="fa-solid fa-plus"></i> Add a usage block</button>
+                        <div id="add-block-panel" class="add-block-panel" style="display:none;"></div>
+                    </div>
+
                     <div class="dashboard-grid">
 
                         <!-- CLAUDE CARD -->
@@ -432,7 +438,7 @@
                                 </div>
 
                                 <!-- 5 Hour Limit Parallel Bars -->
-                                <div class="parallel-pace-section mb-3">
+                                <div class="parallel-pace-section mb-3" id="chatgpt-5h-section">
                                     <div class="section-subtitle-small">5 Hour Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
@@ -458,7 +464,7 @@
                                 </div>
 
                                 <!-- Weekly Limit Parallel Bars -->
-                                <div class="parallel-pace-section">
+                                <div class="parallel-pace-section" id="chatgpt-weekly-section">
                                     <div class="section-subtitle-small">Weekly Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
@@ -482,81 +488,35 @@
                                         <i class="fa-solid fa-gauge-high"></i> <span id="weekly-status-text-chatgpt">On Track</span>
                                     </div>
                                 </div>
-                            </div>
 
-
-                        </div>
-
-                        <!-- CODEX CARD -->
-                        <div class="glass-panel provider-card codex-card" id="card-codex">
-                            <div class="provider-header">
-                                <div class="provider-title">
-                                    <div class="brand-icon-wrapper codex">
-                                        <i class="fa-solid fa-terminal"></i>
-                                    </div>
-                                    <div>
-                                        <h3>Codex</h3>
-                                        <span class="provider-meta">OpenAI • Monthly Limit</span>
-                                    </div>
-                                </div>
-                                <span class="badge badge-codex">Analytics Scraped</span>
-                            </div>
-
-                            <div class="progress-visualization">
-                                <div class="progress-ring-container">
-                                    <svg class="progress-ring" width="160" height="160">
-                                        <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.04)" stroke-width="12" fill="transparent" r="68" cx="80" cy="80"/>
-                                        <circle class="progress-ring__circle codex-stroke" id="ring-codex" stroke-width="12" fill="transparent" r="68" cx="80" cy="80"/>
-                                    </svg>
-                                    <div class="progress-value">
-                                        <span class="pct" id="pct-codex">100%</span>
-                                        <span class="lbl">Left</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card-stats">
-                                <div class="sync-status-indicator mb-2" style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
-                                    <div>
-                                        <i class="fa-solid fa-circle-check text-green"></i>
-                                        <span id="sync-time-codex">Not synced</span>
-                                    </div>
-                                    <button class="btn-sync-now" data-provider="chatgpt" title="Sync now via ChatGPT/Codex analytics tab">
-                                        <i class="fa-solid fa-arrows-rotate"></i>
-                                    </button>
-                                </div>
-                                <!-- Empty state: shown when not yet synced -->
-                                <div id="empty-state-codex" style="display:none; margin:8px 0 4px; padding:8px 10px; background:rgba(167,139,250,0.07); border:1px solid rgba(167,139,250,0.2); border-radius:8px; font-size:0.75rem; color:rgba(255,255,255,0.6); line-height:1.5;">
-                                    <i class="fa-solid fa-circle-info" style="color:#a78bfa; margin-right:5px;"></i>
-                                    Open <a href="https://chatgpt.com/codex/cloud/settings/analytics#usage" target="_blank" style="color:#a78bfa; font-weight:600;">Codex analytics</a> to load your monthly limit.
-                                </div>
-
-                                <!-- Monthly Limit Parallel Bars -->
-                                <div class="parallel-pace-section">
+                                <!-- Monthly Limit Parallel Bars (free/personal accounts — same green ChatGPT family) -->
+                                <div class="parallel-pace-section mt-3" id="chatgpt-monthly-section" style="display:none;">
                                     <div class="section-subtitle-small">Monthly Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
                                             <span>Remaining Capacity:</span>
-                                            <span class="font-mono pct-val" id="pace-cap-pct-codex">100%</span>
+                                            <span class="font-mono pct-val" id="month-cap-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
-                                            <div class="parallel-bar-fill codex-bg" id="pace-cap-bar-codex" style="width: 100%;"></div>
+                                            <div class="parallel-bar-fill chatgpt-bg" id="month-cap-bar-chatgpt" style="width: 100%;"></div>
                                         </div>
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Remaining Time (Resets <span id="timer-codex" class="font-mono">—</span>):</span>
-                                            <span class="font-mono pct-val" id="pace-time-pct-codex">100%</span>
+                                            <span>Remaining Time (Resets <span id="month-timer-chatgpt" class="font-mono">—</span>):</span>
+                                            <span class="font-mono pct-val" id="month-time-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
-                                            <div class="parallel-bar-fill time-bg" id="pace-time-bar-codex" style="width: 100%;"></div>
+                                            <div class="parallel-bar-fill time-bg" id="month-time-bar-chatgpt" style="width: 100%;"></div>
                                         </div>
                                     </div>
-                                    <div class="parallel-status mt-2" id="pace-status-box-codex">
-                                        <i class="fa-solid fa-gauge-high"></i> <span id="pace-status-text-codex">On Track</span>
+                                    <div class="parallel-status mt-2" id="month-status-box-chatgpt">
+                                        <i class="fa-solid fa-gauge-high"></i> <span id="month-status-text-chatgpt">On Track</span>
                                     </div>
                                 </div>
                             </div>
+
+
                         </div>
 
                         <!-- GEMINI CARD -->
@@ -740,8 +700,7 @@
                             <p class="section-desc">Choose which subscription blocks appear on your dashboard. Hidden blocks are removed everywhere, including the combined view.</p>
                             <div id="visible-blocks-list" class="visible-blocks-list mt-3">
                                 <label class="block-toggle"><input type="checkbox" id="vb-claude" data-block="claude" checked> <span class="block-toggle-dot" style="background:var(--color-claude);"></span> Claude Pro</label>
-                                <label class="block-toggle"><input type="checkbox" id="vb-chatgpt" data-block="chatgpt" checked> <span class="block-toggle-dot" style="background:var(--color-chatgpt);"></span> ChatGPT Business</label>
-                                <label class="block-toggle"><input type="checkbox" id="vb-codex" data-block="codex" checked> <span class="block-toggle-dot" style="background:#a78bfa;"></span> Codex (Monthly)</label>
+                                <label class="block-toggle"><input type="checkbox" id="vb-chatgpt" data-block="chatgpt" checked> <span class="block-toggle-dot" style="background:var(--color-chatgpt);"></span> ChatGPT (incl. monthly)</label>
                                 <label class="block-toggle"><input type="checkbox" id="vb-gemini" data-block="gemini" checked> <span class="block-toggle-dot" style="background:var(--color-gemini);"></span> Gemini Advanced</label>
                             </div>
                         </div>
@@ -978,6 +937,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.16.0"></script>
+    <script src="app.js?v=0.17.0"></script>
 </body>
 </html>

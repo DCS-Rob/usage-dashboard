@@ -2260,7 +2260,28 @@ body.auth-view .app-container {
 }
 .profile-tab:hover .ptab-delete { opacity: 1; }
 .profile-tab .ptab-delete:hover { color: #f87171; }
-/* Verberg-knop op statische provider-cards */
+/* "Blok toevoegen" knop + chooser */
+.btn-add-block {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.04); border: 1px dashed rgba(255,255,255,0.18);
+    color: var(--text-muted); padding: 9px 16px; border-radius: 9px;
+    cursor: pointer; font-size: 0.82rem; transition: all 0.15s;
+}
+.btn-add-block:hover { color: #fff; border-color: var(--color-gemini); background: rgba(99,102,241,0.08); }
+.add-block-panel {
+    margin-top: 10px; max-width: 360px;
+    background: rgba(18,18,26,0.96); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+.add-block-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: transparent; border: none; color: var(--text-light, #e5e7eb);
+    padding: 10px 12px; border-radius: 7px; cursor: pointer; font-size: 0.85rem;
+    transition: background 0.15s;
+}
+.add-block-item:hover { background: rgba(255,255,255,0.06); }
+
+/* Verwijder-knop (✕) op statische provider-cards */
 .provider-card { position: relative; }
 .block-hide-btn {
     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);

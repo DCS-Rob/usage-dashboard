@@ -4,6 +4,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.17.0] — 2026-06-02
+
+### Gewijzigd
+- **Maandelijkse limiet hoort nu bij ChatGPT (groen)**: het losse paarse "Codex"-blok is verwijderd. De ChatGPT-card toont wélke limieten dat account heeft — 5h + Weekly bij betaald/Business, of Maandelijks bij gratis/Personal. Alles in ChatGPT-groen. (Data wordt intern nog als `syncStatus.codex` opgeslagen, maar visueel onder ChatGPT getoond.)
+- **Duidelijke ✕-knop** om een blok van je dashboard te verwijderen — nu zowel op de statische cards als de profiel-cards (was een oogje).
+
+### Toegevoegd
+- **"Add a usage block"-knop** boven de grid: kies een provider → opent zijn inlog/usage-pagina (en heft eventuele verberging op). Zodra de pagina is geladen verschijnt het blok automatisch.
+
+### Opgelost
+- Foutmelding `Unchecked runtime.lastError: Tabs cannot be edited right now (user may be dragging a tab)` weggewerkt door `runtime.lastError` netjes uit te lezen in alle `chrome.tabs.*` callbacks van `triggerSyncNow`.
+
 ## [0.16.0] — 2026-06-02
 
 ### Gewijzigd — slimmere zichtbaarheid (logischere werkwijze)

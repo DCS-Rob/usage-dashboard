@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.16.0";
+const APP_VERSION = "0.17.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -677,8 +677,8 @@ function hasProviderData(provider, syncStatus, logs) {
     syncStatus = syncStatus || {};
     logs = logs || [];
     if (provider === "claude")  return !!syncStatus.claude  || logs.some(l => l.model === "claude");
-    if (provider === "chatgpt") return !!syncStatus.chatgpt || logs.some(l => l.model === "chatgpt");
-    if (provider === "codex")   return !!syncStatus.codex;
+    // ChatGPT omvat ook de maandelijkse limiet (intern: syncStatus.codex) voor gratis/personal accounts
+    if (provider === "chatgpt") return !!syncStatus.chatgpt || !!syncStatus.codex || logs.some(l => l.model === "chatgpt");
     if (provider === "gemini")  return !!syncStatus.gemini  || logs.some(l => l.model === "gemini");
     return false;
 }
@@ -697,7 +697,7 @@ function getCurrentProfileContext() {
 //  - respecteert de globale Settings-toggle én de per-profiel handmatige verberging
 function applyBlockVisibility() {
     const ctx = getCurrentProfileContext();
-    const map = { claude: "card-claude", chatgpt: "card-chatgpt", codex: "card-codex", gemini: "card-gemini" };
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini" };
     const hiddenWithData = [];
     Object.keys(map).forEach(provider => {
         const el = document.getElementById(map[provider]);
@@ -717,7 +717,7 @@ function applyBlockVisibility() {
 
 // Voegt één keer een verberg-knop (oogje) toe aan elke statische card.
 function addStaticHideButtons() {
-    const map = { claude: "card-claude", chatgpt: "card-chatgpt", codex: "card-codex", gemini: "card-gemini" };
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini" };
     Object.keys(map).forEach(provider => {
         const card = document.getElementById(map[provider]);
         if (!card) return;
@@ -725,8 +725,8 @@ function addStaticHideButtons() {
         if (!header || header.querySelector(".block-hide-btn")) return;
         const btn = document.createElement("button");
         btn.className = "block-hide-btn";
-        btn.title = "Hide this block in this profile's view";
-        btn.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
+        btn.title = "Remove this block from your dashboard";
+        btn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
         btn.addEventListener("click", () => {
             const pid = btn.getAttribute("data-pid") || (state.myProfileId || "me");
             setLocalHidden(pid, provider, true);
@@ -740,6 +740,69 @@ function addStaticHideButtons() {
         if (badge) actions.appendChild(badge);
         actions.appendChild(btn);
         header.appendChild(actions);
+    });
+}
+
+// "Blok toevoegen": opent de inlog/usage-pagina van een provider zodat het blok verschijnt.
+function getProviderLoginUrl(provider) {
+    if (provider === "claude")  return "https://claude.ai/settings/usage";
+    if (provider === "chatgpt") return "https://chatgpt.com/codex/cloud/settings/analytics#usage";
+    if (provider === "gemini")  return "https://gemini.google.com/app";
+    return null;
+}
+
+function openProviderLogin(provider) {
+    const ctx = getCurrentProfileContext();
+    // Verberging opheffen (lokaal + globaal) zodat het blok zichtbaar wordt zodra er data is
+    setLocalHidden(ctx.profileId, provider, false);
+    if (!isBlockVisible(provider)) {
+        if (!state.userSettings.visibleBlocks) state.userSettings.visibleBlocks = {};
+        state.userSettings.visibleBlocks[provider] = true;
+        saveUserData();
+    }
+    const url = getProviderLoginUrl(provider);
+    if (url) {
+        if (typeof chrome !== "undefined" && chrome.tabs) {
+            chrome.tabs.create({ url, active: true }, () => { void chrome.runtime.lastError; });
+        } else {
+            window.open(url, "_blank");
+        }
+    }
+    applyBlockVisibility();
+    const panel = document.getElementById("add-block-panel");
+    if (panel) panel.style.display = "none";
+    showToast(`<i class="fa-solid fa-arrow-up-right-from-square"></i> Opening ${PROVIDER_META[provider].name}… log in / open the usage page and the block appears automatically.`);
+}
+
+function renderAddBlockPanel() {
+    const panel = document.getElementById("add-block-panel");
+    if (!panel) return;
+    const ctx = getCurrentProfileContext();
+    panel.innerHTML = PROVIDER_ORDER.map(p => {
+        const meta = PROVIDER_META[p];
+        const has = hasProviderData(p, ctx.syncStatus, ctx.logs);
+        const hidden = isLocallyHidden(ctx.profileId, p) || !isBlockVisible(p);
+        const status = (has && !hidden) ? "Active" : hidden ? "Hidden — click to restore" : "Not loaded — opens its page";
+        return `<button class="add-block-item" data-add-provider="${p}">
+            <span class="block-toggle-dot" style="background:var(--color-${meta.cls});"></span>
+            <span style="flex:1;text-align:left;">${meta.name}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);">${status}</span>
+        </button>`;
+    }).join("");
+    panel.querySelectorAll(".add-block-item").forEach(b => {
+        b.addEventListener("click", () => openProviderLogin(b.getAttribute("data-add-provider")));
+    });
+}
+
+function initAddBlockButton() {
+    const btn = document.getElementById("btn-add-block");
+    const panel = document.getElementById("add-block-panel");
+    if (!btn || !panel) return;
+    btn.addEventListener("click", () => {
+        const open = panel.style.display !== "none";
+        if (open) { panel.style.display = "none"; return; }
+        renderAddBlockPanel();
+        panel.style.display = "block";
     });
 }
 
@@ -762,7 +825,7 @@ function renderStaticRestoreBar(profileId, providers) {
 // Houdt de checkboxes in Settings in sync met de opgeslagen instellingen.
 function renderVisibleBlockToggles() {
     const vb = state.userSettings.visibleBlocks || {};
-    ["claude", "chatgpt", "codex", "gemini"].forEach(provider => {
+    ["claude", "chatgpt", "gemini"].forEach(provider => {
         const cb = document.getElementById(`vb-${provider}`);
         if (cb) cb.checked = vb[provider] !== false;
     });
@@ -1328,52 +1391,37 @@ function renderDashboardProgress() {
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
 
-    // --- D. CODEX MONTHLY CALCULATIONS ---
-    const codexSync = state.syncStatus.codex;
-    let codexPct = 100;
-    let codexTimePct = 0;
-    let codexLastSync = "Not synced";
-    let codexTimerText = "—";
+    // --- D. CHATGPT MONTHLY (free/personal accounts) — zelfde groene ChatGPT-card ---
+    // De maandelijkse gebruikslimiet (intern opgeslagen als syncStatus.codex) hoort bij
+    // het ChatGPT-account: betaald = 5h+weekly, gratis/personal = maandelijks.
+    const monthlySync = state.syncStatus.codex;
+    const has5h = !!(state.syncStatus.chatgpt && state.syncStatus.chatgpt.pctRemaining5h !== undefined && state.syncStatus.chatgpt.pctRemaining5h !== null);
+    const hasWeekly = !!(state.syncStatus.chatgpt && state.syncStatus.chatgpt.pctRemainingWeekly !== undefined && state.syncStatus.chatgpt.pctRemainingWeekly !== null);
 
-    if (codexSync && (codexSync.pctRemainingMonthly !== undefined && codexSync.pctRemainingMonthly !== null)) {
-        codexPct = Math.max(0, Math.min(100, codexSync.pctRemainingMonthly));
-        codexLastSync = "Tab sync: " + formatTimeAgo(codexSync.lastSynced);
+    // Secties tonen/verbergen op basis van welke limieten dit account heeft
+    const sec5h = document.getElementById("chatgpt-5h-section");
+    const secWeek = document.getElementById("chatgpt-weekly-section");
+    const secMonth = document.getElementById("chatgpt-monthly-section");
+    if (sec5h)   sec5h.style.display   = has5h ? "" : "none";
+    if (secWeek) secWeek.style.display = hasWeekly ? "" : "none";
 
-        if (codexSync.resetMonthly) {
-            // Strip prefix en toon de ruwe resetdatum (bv. "1 jul 2026 23:24")
-            codexTimerText = codexSync.resetMonthly.replace(/^(?:resets?|herstelt)\s*/i, "").trim() || "—";
+    if (monthlySync && monthlySync.pctRemainingMonthly !== undefined && monthlySync.pctRemainingMonthly !== null) {
+        const monthPct = Math.max(0, Math.min(100, monthlySync.pctRemainingMonthly));
+        const m = parseDateResetTime(monthlySync.resetMonthly, now, 31 * 24 * 60 * 60 * 1000);
+        const monthTimerEl = document.getElementById("month-timer-chatgpt");
+        if (monthTimerEl) monthTimerEl.innerText = m.timerText;
+        if (secMonth) secMonth.style.display = "";
+        updateParallelPace("chatgpt", "month", monthPct, m.timePct);
 
-            // Tijd-percentage t.o.v. een ~31-daags venster
-            const monthMs = 31 * 24 * 60 * 60 * 1000;
-            const months = { jan: 0, feb: 1, mar: 2, mrt: 2, apr: 3, may: 4, mei: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11 };
-            const m = codexSync.resetMonthly.match(/(\d{1,2})\s*([a-z]+)\.?\s*(\d{4})?(?:[\s,]+(\d{1,2})[:.](\d{2}))?/i);
-            if (m) {
-                const day = parseInt(m[1]);
-                const monthName = (m[2] || "").toLowerCase().substring(0, 3);
-                const year = m[3] ? parseInt(m[3]) : new Date().getFullYear();
-                const hours = m[4] ? parseInt(m[4]) : 0;
-                const mins = m[5] ? parseInt(m[5]) : 0;
-                if (months[monthName] !== undefined) {
-                    const target = new Date(year, months[monthName], day, hours, mins, 0, 0);
-                    const diffMs = target.getTime() - now;
-                    if (diffMs > 0) {
-                        codexTimePct = Math.max(0, Math.min(100, (diffMs / monthMs) * 100));
-                    }
-                }
-            }
+        // Personal/gratis account zonder 5h: laat de ring + sync-tijd de maandlimiet tonen
+        if (!has5h) {
+            document.getElementById("pct-chatgpt").innerText = `${monthPct}%`;
+            setProgressRing("ring-chatgpt", monthPct);
+            document.getElementById("sync-time-chatgpt").innerText = "Tab sync: " + formatTimeAgo(monthlySync.lastSynced);
         }
+    } else if (secMonth) {
+        secMonth.style.display = "none";
     }
-
-    const pctCodexEl = document.getElementById("pct-codex");
-    if (pctCodexEl) pctCodexEl.innerText = `${codexPct}%`;
-    const syncCodexEl = document.getElementById("sync-time-codex");
-    if (syncCodexEl) syncCodexEl.innerText = codexLastSync;
-    const timerCodexEl = document.getElementById("timer-codex");
-    if (timerCodexEl) timerCodexEl.innerText = codexTimerText;
-    setProgressRing("ring-codex", codexPct);
-    updateParallelPace("codex", "pace", codexPct, codexTimePct);
-    const emCodex = document.getElementById("empty-state-codex");
-    if (emCodex) emCodex.style.display = codexSync ? "none" : "block";
 
     } finally {
         // Herstel altijd — ook als er een fout optrad halverwege de functie
@@ -2012,9 +2060,10 @@ function setupEventListeners() {
         });
     });
 
-    // K2. Visible-block toggles + per-card verberg-knoppen
+    // K2. Visible-block toggles + per-card verberg-knoppen + blok-toevoegen
     initVisibleBlockToggles();
     addStaticHideButtons();
+    initAddBlockButton();
 
     // L. Settings Import / Export JSON
     document.getElementById("btn-export-data").addEventListener("click", () => {
@@ -2319,22 +2368,26 @@ function triggerSyncNow(provider) {
         const queryPattern = provider === "claude" ? "*://*.claude.ai/*" : "*://*.chatgpt.com/*";
         
         chrome.tabs.query({ url: queryPattern }, (tabs) => {
+            // Zwijg netjes als Chrome de tabs nu niet wil bewerken (bv. tijdens tab-drag)
+            if (chrome.runtime.lastError || !tabs) { void chrome.runtime.lastError; return; }
             // Find an existing tab on the settings/analytics page
             const existingTab = tabs.find(t => t.url && t.url.includes(provider === "claude" ? "settings/usage" : "analytics"));
-            
+
             if (existingTab) {
                 showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Tab found! Reloading the page in the background...`);
                 // Stille reload zonder de gebruiker naar de tab te forceren
                 chrome.tabs.reload(existingTab.id, {}, () => {
-                    // Reload triggered
+                    // "Tabs cannot be edited right now (user may be dragging a tab)" netjes negeren
+                    void chrome.runtime.lastError;
                 });
             } else {
                 showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> No active tab found. Opening a temporary background tab...`);
                 // Achtergrond-tab: gebruiker blijft op huidige scherm
                 chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                    if (chrome.runtime.lastError || !newTab) { void chrome.runtime.lastError; return; }
                     // Iets langere wachttijd, want background tabs laden trager
                     setTimeout(() => {
-                        chrome.tabs.remove(newTab.id);
+                        chrome.tabs.remove(newTab.id, () => { void chrome.runtime.lastError; });
                         showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Sync complete!`);
                     }, 8500);
                 });
@@ -2775,12 +2828,11 @@ function renderProfileBar() {
    MULTI-PROFILE GRID — één card per (profiel × abonnement) in de "All"-weergave
    ========================================================================== */
 const PROVIDER_META = {
-    claude:  { name: "Claude Pro",       meta: "Anthropic",       icon: "fa-compass-drafting",    cls: "claude" },
-    chatgpt: { name: "ChatGPT Business", meta: "OpenAI",          icon: "fa-robot",               cls: "chatgpt" },
-    codex:   { name: "Codex",            meta: "OpenAI • Monthly", icon: "fa-terminal",            cls: "codex" },
-    gemini:  { name: "Gemini Advanced",  meta: "Google",          icon: "fa-wand-magic-sparkles", cls: "gemini" }
+    claude:  { name: "Claude Pro",      meta: "Anthropic",  icon: "fa-compass-drafting",    cls: "claude" },
+    chatgpt: { name: "ChatGPT",         meta: "OpenAI",     icon: "fa-robot",               cls: "chatgpt" },
+    gemini:  { name: "Gemini Advanced", meta: "Google",     icon: "fa-wand-magic-sparkles", cls: "gemini" }
 };
-const PROVIDER_ORDER = ["claude", "chatgpt", "codex", "gemini"];
+const PROVIDER_ORDER = ["claude", "chatgpt", "gemini"];
 
 // Lokale (niet-gesynchroniseerde) per-profiel verbergvoorkeur.
 function getLocalHiddenMap() {
@@ -2946,8 +2998,10 @@ function parseDateResetTime(resetStr, now, windowMs) {
 }
 
 // Berekent alle pace-secties voor een (provider × snapshot).
-function computeProviderPace(provider, sync, now) {
+// monthlySync = de losse maandelijkse limiet (intern syncStatus.codex), alleen voor chatgpt.
+function computeProviderPace(provider, sync, now, monthlySync) {
     const sections = [];
+    sync = sync || {};
     if (provider === "claude") {
         const windowMs = (state.userSettings.claude.windowHours || 5) * 3600000;
         const s = parseClaudeSessionTime(sync.resetSession, windowMs);
@@ -2955,14 +3009,19 @@ function computeProviderPace(provider, sync, now) {
         sections.push({ title: "Current Session (Pace)", capPct: sync.pctRemaining, timePct: s.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(s.timerText)}</span>` });
         sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: w.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(w.timerText)}</span>` });
     } else if (provider === "chatgpt") {
-        const five = parseChatgpt5hTime(sync.reset5h, now);
-        const wk = parseDateResetTime(sync.resetWeekly, now, 7 * 24 * 60 * 60 * 1000);
-        const cap5 = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
-        sections.push({ title: "5 Hour Limit (Pace)", capPct: cap5, timePct: five.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(five.timerText)}</span>` });
-        sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: wk.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(wk.timerText)}</span>` });
-    } else if (provider === "codex") {
-        const mo = parseDateResetTime(sync.resetMonthly, now, 31 * 24 * 60 * 60 * 1000);
-        sections.push({ title: "Monthly Limit (Pace)", capPct: sync.pctRemainingMonthly, timePct: mo.timePct, resetLabel: `<span class="font-mono">${escapeHtmlSafe(mo.timerText)}</span>` });
+        // Betaald account: 5h + weekly. Gratis/personal: maandelijks. Toon wat aanwezig is.
+        if (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) {
+            const five = parseChatgpt5hTime(sync.reset5h, now);
+            sections.push({ title: "5 Hour Limit (Pace)", capPct: sync.pctRemaining5h, timePct: five.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(five.timerText)}</span>` });
+        }
+        if (sync.pctRemainingWeekly !== undefined && sync.pctRemainingWeekly !== null) {
+            const wk = parseDateResetTime(sync.resetWeekly, now, 7 * 24 * 60 * 60 * 1000);
+            sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: wk.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(wk.timerText)}</span>` });
+        }
+        if (monthlySync && monthlySync.pctRemainingMonthly !== undefined && monthlySync.pctRemainingMonthly !== null) {
+            const mo = parseDateResetTime(monthlySync.resetMonthly, now, 31 * 24 * 60 * 60 * 1000);
+            sections.push({ title: "Monthly Limit (Pace)", capPct: monthlySync.pctRemainingMonthly, timePct: mo.timePct, resetLabel: `<span class="font-mono">${escapeHtmlSafe(mo.timerText)}</span>` });
+        }
     } else if (provider === "gemini") {
         sections.push({ title: "Usage (Pace)", capPct: sync.limitReached ? 0 : 100, timePct: 0, resetLabel: sync.limitReached ? "limit reached" : "—" });
     }
@@ -2972,16 +3031,20 @@ function computeProviderPace(provider, sync, now) {
 // Bouwt één card per (profiel × provider) — mét de volledige pace-balken.
 function buildSnapshotCard(provider, profile) {
     const meta = PROVIDER_META[provider];
-    const sync = (profile.syncStatus || {})[provider];
-    if (!meta || !sync) return "";
+    if (!meta) return "";
+    const allSync = profile.syncStatus || {};
+    let sync = allSync[provider];
+    // ChatGPT: de maandlimiet (intern syncStatus.codex) hoort bij dit account
+    const monthlySync = (provider === "chatgpt") ? allSync.codex : null;
+    if (!sync && !(provider === "chatgpt" && monthlySync)) return "";
+    sync = sync || {};
     const now = Date.now();
     const fmtPct = v => (v === undefined || v === null) ? "—" : `${Math.round(v)}%`;
 
     // Primair percentage (ring) per provider
     let pct;
     if (provider === "claude")  pct = sync.pctRemaining;
-    else if (provider === "chatgpt") pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : sync.pctRemaining;
-    else if (provider === "codex")   pct = sync.pctRemainingMonthly;
+    else if (provider === "chatgpt") pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : (monthlySync ? monthlySync.pctRemainingMonthly : sync.pctRemaining);
     else if (provider === "gemini")  pct = sync.limitReached ? 0 : 100;
 
     const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
@@ -2989,14 +3052,14 @@ function buildSnapshotCard(provider, profile) {
     const offset = circ - (pctNum / 100) * circ;
     const lastSeen = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
 
-    const sectionsHTML = computeProviderPace(provider, sync, now)
+    const sectionsHTML = computeProviderPace(provider, sync, now, monthlySync)
         .map(s => paceSectionHTML(s.title, meta.cls, s.capPct, s.timePct, s.resetLabel))
         .join("");
 
     return `
     <div class="glass-panel provider-card ${meta.cls}-card mp-card">
-        <button class="mp-hide" data-mp-pid="${profile.id}" data-mp-provider="${provider}" title="Hide this block in your view">
-            <i class="fa-solid fa-eye-slash"></i>
+        <button class="mp-hide" data-mp-pid="${profile.id}" data-mp-provider="${provider}" title="Remove this block from your dashboard">
+            <i class="fa-solid fa-xmark"></i>
         </button>
         <div class="provider-header">
             <div class="provider-title">
@@ -3059,8 +3122,7 @@ function renderMultiProfileCards() {
     const hiddenRestore = [];
     profiles.forEach(profile => {
         PROVIDER_ORDER.forEach(provider => {
-            const sync = (profile.syncStatus || {})[provider];
-            if (!sync) return;                                  // geen data → geen card
+            if (!hasProviderData(provider, profile.syncStatus, [])) return;  // geen data → geen card
             if (!isBlockVisible(provider)) return;              // globaal verborgen
             if (isLocallyHidden(profile.id, provider)) {        // lokaal verborgen → restore-chip
                 hiddenRestore.push({ pid: profile.id, provider, label: profile.label });

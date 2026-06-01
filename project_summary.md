@@ -2,7 +2,7 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.16.0**
+**Huidige versie: 0.17.0**
 
 ---
 
@@ -126,14 +126,15 @@ Elk Chrome-profiel heeft zijn eigen `lt_profile_id` (auto-gegenereerd) en `lt_pr
 
 ### Providers & blokken (v0.14–v0.16)
 
-Het dashboard kent vier provider-blokken, elk met een eigen kleur:
+Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 
 | Provider | Kleur | Limiet(en) | Scrape-bron |
 |----------|-------|-----------|-------------|
 | **Claude Pro** | oranje | Current Session (5h) + Weekly | `claude.ai/settings/usage` |
-| **ChatGPT Business** | groen | 5 Hour + Weekly | `chatgpt.com …/analytics` |
-| **Codex** | paars | Monthly (maandelijkse gebruikslimiet) | `chatgpt.com/codex/cloud/settings/analytics` |
+| **ChatGPT** | groen | Betaald/Business: 5 Hour + Weekly · Gratis/Personal: **Maandelijks** | `chatgpt.com/codex/cloud/settings/analytics` |
 | **Gemini Advanced** | blauw | 24h Rolling (teller) | `gemini.google.com` |
+
+> **Codex/maandlimiet:** de maandelijkse gebruikslimiet wordt intern opgeslagen als `syncStatus.codex`, maar **visueel onder ChatGPT** getoond (groen) als een "Monthly Limit"-sectie. Er is dus géén apart Codex-blok meer (v0.17.0). De ChatGPT-card toont automatisch wélke limieten het account heeft.
 
 ### Weergave-logica
 
@@ -238,6 +239,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.17.0** | 2026-06-02 | Maandlimiet onder ChatGPT (groen) i.p.v. apart paars Codex-blok; ChatGPT-card toont 5h+Weekly (betaald) of Maandelijks (gratis). Duidelijke ✕-verwijderknop op alle cards. "Add a usage block"-knop opent de inlog/usage-pagina. Tabs-foutmelding (`runtime.lastError`) opgelost. |
 | **0.16.0** | 2026-06-02 | Auto-zichtbaarheid: blokken verschijnen alleen bij data (geen Gemini-blok zonder gebruik). Verberg-knop (oogje) + herstel-balk óók in enkel-profiel weergave. Per-profiel verbergen werkt consistent door in "All profiles". |
 | **0.15.1** | 2026-06-01 | Volledige pace-balken (Remaining Capacity/Time + reset + status) terug in de losse profiel-cards; providerkleuren behouden per blok. Nieuwe reset-tijd parsers. |
 | **0.15.0** | 2026-06-01 | Card per (profiel × abonnement) in de "All profiles" weergave i.p.v. RD/P-chips; per-profiel lokaal verbergen met herstel-chips. |
