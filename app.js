@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.10.0";
+const APP_VERSION = "0.11.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -147,7 +147,9 @@ let state = {
     },
     // Multi-profile: slaat alle profielen op uit de cloud bin
     // { "pid-abc1": { label, syncStatus, lastSeen }, ... }
-    cloudProfiles: {}
+    cloudProfiles: {},
+    // Currently selected profile tab (null = all profiles)
+    selectedProfileId: null
 };
 
 // Pricing presets for prompt estimation
@@ -297,18 +299,19 @@ function initApp() {
     if (syncClient && syncClient.enabled) {
         state.currentUser = "Gekoppelde Mobiel";
         showView("dashboard");
-        
+
         // Hide elements that are read-only / not applicable on mobile PWA
         applyMobileSyncUI();
-        
+
         // Load cloud sync data
         loadCloudUserData();
-        
+        renderProfileBar();
+
         // Auto-refresh from cloud every 25 seconds
         setInterval(() => {
             loadCloudUserData();
         }, 25000);
-        
+
         return;
     }
 
@@ -382,11 +385,12 @@ function loadUserData(callback) {
             state.userThreads = user.threads || [];
             state.userSettings = user.settings || state.userSettings;
             state.syncStatus = user.syncStatus || { claude: null, chatgpt: null };
-            
+
             document.getElementById("display-username").innerText = state.currentUser;
-            
+
             updateUI();
             if (callback) callback();
+            loadCloudProfilesForDesktop();
         };
 
         if (!user) {
@@ -442,6 +446,7 @@ function updateUI() {
     renderLogsList();
     renderAnalyticsChart();
     updateScraperStatusLabels();
+    renderProfileBar();
 }
 
 // 1. Calculate and Render Limits Helper
@@ -531,7 +536,13 @@ function getNextWeeklyResetMs(dayName, timeStr) {
 
 function renderDashboardProgress() {
     const now = Date.now();
-    
+
+    // Profile filtering: gebruik syncStatus van geselecteerd profiel, anders geaggregeerd
+    const _savedSyncStatus = state.syncStatus;
+    if (state.selectedProfileId && state.cloudProfiles && state.cloudProfiles[state.selectedProfileId]) {
+        state.syncStatus = state.cloudProfiles[state.selectedProfileId].syncStatus || { claude: null, chatgpt: null };
+    }
+
     // --- A. CLAUDE PRO CALCULATIONS ---
     const claudeSettings = state.userSettings.claude;
     const claudeWindowMs = claudeSettings.windowHours * 60 * 60 * 1000;
@@ -897,6 +908,9 @@ function renderDashboardProgress() {
         geminiTimePct = 0;
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
+
+    // Restore syncStatus
+    state.syncStatus = _savedSyncStatus;
 }
 
 // 2. Dynamic Settings & Info Page labels
@@ -1709,6 +1723,23 @@ function setupEventListeners() {
         pairingInput.addEventListener("focus", () => { pairingInput.style.borderColor = "var(--color-gemini)"; });
         pairingInput.addEventListener("blur",  () => { pairingInput.style.borderColor = "rgba(255,255,255,0.08)"; });
     }
+
+    // Profile bar: "+ Add profile" button and add-profile panel controls
+    const btnOpenAddProfile = document.getElementById("btn-open-add-profile");
+    if (btnOpenAddProfile) btnOpenAddProfile.addEventListener("click", () => {
+        const panel = document.getElementById("add-profile-panel");
+        if (panel && panel.style.display !== "none") closeAddProfilePanel();
+        else openAddProfilePanel();
+    });
+    const btnCloseAddProfile = document.getElementById("btn-close-add-profile");
+    if (btnCloseAddProfile) btnCloseAddProfile.addEventListener("click", closeAddProfilePanel);
+    const btnSaveDashName = document.getElementById("btn-save-dashboard-profile-name");
+    if (btnSaveDashName) btnSaveDashName.addEventListener("click", saveDashboardProfileName);
+    const btnCopyAddProfileUrl = document.getElementById("btn-copy-add-profile-url");
+    if (btnCopyAddProfileUrl) btnCopyAddProfileUrl.addEventListener("click", () => {
+        const urlEl = document.getElementById("add-profile-url");
+        if (urlEl) navigator.clipboard.writeText(urlEl.textContent).then(() => showToast(`<i class="fa-solid fa-copy"></i> Link copied!`));
+    });
 }
 
 function deleteLog(id) {
@@ -2076,6 +2107,140 @@ function renderProfileChips(elementId, model) {
             <span class="chip-dot"></span>${initials}
         </span>`;
     }).join("");
+}
+
+/* ==========================================================================
+   PROFILE BAR (Dashboard top)
+   ========================================================================== */
+function renderProfileBar() {
+    const bar = document.getElementById("profile-bar");
+    const tabsContainer = document.getElementById("profile-bar-tabs");
+    if (!bar || !tabsContainer) return;
+
+    const profiles = state.cloudProfiles || {};
+    const profileIds = Object.keys(profiles);
+
+    // Toon de balk alleen als er een sync geconfigureerd is of profielen beschikbaar zijn
+    DB.get(["lt_sync_config", "lt_profile_id", "lt_profile_label"], (res) => {
+        const hasSyncConfig = res.lt_sync_config && res.lt_sync_config.enabled;
+        const myId = res.lt_profile_id;
+        const myLabel = res.lt_profile_label || "This profile";
+
+        if (!hasSyncConfig && profileIds.length === 0) {
+            bar.style.display = "none";
+            return;
+        }
+        bar.style.display = "flex";
+
+        // Voeg eigen profiel toe als het er nog niet in zit (desktop vóór eerste sync)
+        const allProfiles = { ...profiles };
+        if (myId && !allProfiles[myId]) {
+            allProfiles[myId] = { label: myLabel, syncStatus: state.syncStatus, lastSeen: Date.now() };
+        }
+        const allIds = Object.keys(allProfiles);
+
+        let html = "";
+
+        // "All" tab — alleen tonen bij 2+ profielen
+        if (allIds.length > 1) {
+            const allActive = !state.selectedProfileId ? "active" : "";
+            html += `<button class="profile-tab ${allActive}" data-pid="all">
+                <span class="ptab-dot" style="background:var(--color-gemini);"></span>All profiles
+            </button>`;
+        }
+
+        // Tab per profiel
+        const now = Date.now();
+        allIds.forEach(id => {
+            const p = allProfiles[id];
+            const label = p.label || "Profile";
+            const stale = (now - (p.lastSeen || 0)) > 6 * 60 * 60 * 1000;
+            const pct = p.syncStatus && p.syncStatus.claude ? p.syncStatus.claude.pctRemaining : undefined;
+            const isMe = id === myId;
+            const active = state.selectedProfileId === id ? "active" : (allIds.length === 1 ? "active" : "");
+            let dotColor = stale ? "rgba(255,255,255,0.2)" : (pct === undefined ? "rgba(255,255,255,0.4)" : pct > 50 ? "#4ade80" : pct > 20 ? "#fbbf24" : "#f87171");
+            const title = stale ? `${label} — stale (>6h)` : `${label}${isMe ? " (this device)" : ""}`;
+            html += `<button class="profile-tab ${active}" data-pid="${id}" title="${title}">
+                <span class="ptab-dot" style="background:${dotColor};"></span>${label}${isMe ? " <i class='fa-solid fa-desktop' style='font-size:0.65rem;opacity:0.6;'></i>" : ""}
+            </button>`;
+        });
+
+        tabsContainer.innerHTML = html;
+
+        // Click listeners
+        tabsContainer.querySelectorAll(".profile-tab").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const pid = btn.getAttribute("data-pid");
+                state.selectedProfileId = (pid === "all") ? null : pid;
+                renderProfileBar();
+                renderDashboardProgress();
+                updateScraperStatusLabels();
+            });
+        });
+
+        // Vul ook het naam-veld in het add-panel in
+        const nameInput = document.getElementById("dashboard-profile-name");
+        if (nameInput && myLabel && myLabel !== "This profile") nameInput.value = myLabel;
+    });
+}
+
+function loadCloudProfilesForDesktop() {
+    if (isSyncClient()) return; // Alleen desktop
+    DB.get(["lt_sync_config"], (res) => {
+        const config = res.lt_sync_config;
+        if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
+        syncRelay(config).read(config.binId).then(data => {
+            if (!data || !data.data) return;
+            try {
+                const doc = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
+                if (doc.profiles && Object.keys(doc.profiles).length > 0) {
+                    state.cloudProfiles = doc.profiles;
+                    renderProfileBar();
+                }
+            } catch (e) {}
+        }).catch(() => {});
+    });
+}
+
+function openAddProfilePanel() {
+    const panel = document.getElementById("add-profile-panel");
+    if (panel) panel.style.display = "block";
+    // Populate the sync URL in the panel
+    DB.get(["lt_sync_config", "lt_pwa_host"], (res) => {
+        const config = res.lt_sync_config;
+        const urlEl = document.getElementById("add-profile-url");
+        const qrEl = document.getElementById("add-profile-qr");
+        if (!config || !config.enabled) {
+            if (urlEl) urlEl.textContent = "No sync configured yet — go to Settings → Mobile Sync and generate a pairing code first.";
+            if (qrEl) qrEl.innerHTML = "";
+            return;
+        }
+        const hostUrl = (res.lt_pwa_host || DEFAULT_PWA_HOST).replace(/\/+$/, "");
+        const providerParam = (config.provider && config.provider !== "npoint") ? `&provider=${config.provider}` : "";
+        const fullUrl = `${hostUrl}/index.html?key=${config.pairingKey}&bin=${config.binId}${providerParam}`;
+        if (urlEl) urlEl.textContent = fullUrl;
+        if (qrEl) qrEl.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(fullUrl)}" alt="QR" style="border-radius:4px;">`;
+    });
+}
+
+function closeAddProfilePanel() {
+    const panel = document.getElementById("add-profile-panel");
+    if (panel) panel.style.display = "none";
+}
+
+function saveDashboardProfileName() {
+    const input = document.getElementById("dashboard-profile-name");
+    if (!input) return;
+    const label = input.value.trim() || "My Profile";
+    DB.set({ lt_profile_label: label }, () => {
+        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile name saved: "${label}"`);
+        // Also sync all label inputs
+        ["sync-profile-label", "sync-profile-label-active"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = label;
+        });
+        renderProfileBar();
+    });
 }
 
 // 2. Fetch and Render cloud sync data on Mobile clients

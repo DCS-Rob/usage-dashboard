@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.10.0">
+    <link rel="stylesheet" href="style.css?v=0.11.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -194,6 +194,43 @@
                 <!-- 1. DASHBOARD TAB -->
                 <section id="tab-dashboard" class="tab-pane active">
 
+
+                    <!-- PROFILE BAR -->
+                    <div class="profile-bar" id="profile-bar" style="display:none;">
+                        <div class="profile-bar-tabs" id="profile-bar-tabs">
+                            <!-- Populated by JS -->
+                        </div>
+                        <button class="btn-add-profile-tab" id="btn-open-add-profile" title="Add another Chrome profile">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- ADD PROFILE PANEL (shown/hidden inline) -->
+                    <div id="add-profile-panel" style="display:none;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                            <h4 style="margin:0; font-size:0.9rem; color:#fff;"><i class="fa-solid fa-user-plus" style="color:var(--color-gemini);margin-right:8px;"></i>Add another Chrome profile</h4>
+                            <button id="btn-close-add-profile" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;padding:0;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+
+                        <!-- Step 1: set your own name -->
+                        <div style="margin-bottom:16px;">
+                            <label style="font-size:0.75rem;color:var(--text-muted);display:block;margin-bottom:6px;"><i class="fa-solid fa-id-badge" style="color:var(--color-gemini);"></i> Your name for this Chrome profile</label>
+                            <div style="display:flex;gap:8px;">
+                                <input type="text" id="dashboard-profile-name" placeholder="e.g. Rob – Personal" style="font-size:0.85rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#fff;flex:1;padding:8px 10px;box-sizing:border-box;">
+                                <button type="button" id="btn-save-dashboard-profile-name" class="btn-secondary" style="padding:0 14px;">Save</button>
+                            </div>
+                        </div>
+
+                        <!-- Step 2: share link -->
+                        <div id="add-profile-share-section">
+                            <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:8px;"><strong style="color:#fff;">To add another Chrome profile:</strong> copy the link below and open it in that Chrome profile's extension popup (or paste it in the Settings → Mobile Sync of that profile).</p>
+                            <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+                                <div id="add-profile-url" style="font-family:monospace;font-size:0.72rem;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.07);padding:8px 10px;border-radius:6px;word-break:break-all;color:var(--color-gemini);flex:1;line-height:1.4;">No sync configured yet — generate a pairing code first in Settings.</div>
+                                <button type="button" id="btn-copy-add-profile-url" class="btn-secondary" style="padding:0 12px;flex-shrink:0;" title="Copy URL"><i class="fa-solid fa-copy"></i></button>
+                            </div>
+                            <div id="add-profile-qr" style="text-align:center;margin-top:4px;"></div>
+                        </div>
+                    </div>
 
                     <div class="dashboard-grid">
 
@@ -794,6 +831,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.10.0"></script>
+    <script src="app.js?v=0.11.0"></script>
 </body>
 </html>

@@ -2066,3 +2066,59 @@ body.auth-view .app-container {
 .profile-list-item .profile-name { font-weight: 600; color: #fff; }
 .profile-list-item .profile-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
 .profile-list-item.this-device { border-color: rgba(99,102,241,0.35); background: rgba(99,102,241,0.07); }
+
+/* ── Profile bar (dashboard top) ── */
+.profile-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.profile-bar-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+.profile-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+.profile-tab:hover { background: rgba(255,255,255,0.09); color: #fff; }
+.profile-tab.active { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.45); color: #fff; }
+.profile-tab .ptab-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+}
+.btn-add-profile-tab {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 1px dashed rgba(255,255,255,0.2);
+    background: transparent; color: var(--text-muted);
+    cursor: pointer; font-size: 0.85rem;
+    transition: all 0.15s; flex-shrink: 0;
+}
+.btn-add-profile-tab:hover { border-color: rgba(99,102,241,0.55); color: var(--color-gemini); background: rgba(99,102,241,0.1); }
+
+/* Add-profile panel (inline, below profile bar) */
+#add-profile-panel {
+    margin-bottom: 20px;
+    padding: 16px 18px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    animation: slideDown 0.2s ease;
+}
+@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
