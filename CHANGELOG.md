@@ -18,6 +18,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.8.0] — 2026-05-29
+
+### Gewijzigd
+- **Volledige UI naar het Engels** zodat het hele team ermee kan werken. Alle zichtbare teksten in `index.html` en alle dynamische strings in `app.js` (toasts, meldingen, statuslabels, log-weergave, datums via `en-GB`) zijn vertaald. Manifest-omschrijvingen (extensie + PWA) ook in het Engels.
+- `background.js` log-notitie ("Synced status correction") en log-timestamps op `en-GB`.
+
+### Behouden / later
+- De scraper (`content.js`) blijft **meertalig matchen** (EN + NL woorden van de Claude/ChatGPT-pagina's) — bewust niet vertaald, anders breekt het uitlezen voor niet-Engelse accounts.
+- Code-comments blijven Nederlands (dev-only, niet zichtbaar voor gebruikers).
+- **NL/EN-taalschakelaar (i18n)** staat als toekomstige feature in `ROADMAP.md`.
+
+---
+
 ## [0.7.5] — 2026-05-29
 
 ### Opgelost / verbeterd

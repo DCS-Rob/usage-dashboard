@@ -100,6 +100,11 @@ Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 - Historische usage per profiel/model/tijd; "waar gaat mijn/ons verbruik aan op".
 - Grafieken, trends, teamvergelijking, exports.
 
+### Taal
+- **Nu: Engels-first** — de hele zichtbare UI is naar het Engels omgezet zodat het hele team ermee kan werken.
+- **Later: NL/EN-keuze (i18n)** — een taalschakelaar; teksten in een centrale strings-tabel zodat uitbreiden naar meer talen makkelijk is.
+- De scraper (`content.js`) blijft **meertalig matchen** (EN + NL woorden) zodat het uitlezen werkt ongeacht de taal van het Claude/ChatGPT-account.
+
 ## 6. Wat ik van jou nodig heb
 - **Eenmalig een Firebase-project aanmaken** (±10 min). Ik lever een klik-voor-klik stappenplan + de config om te plakken. Ik kan zelf geen accounts aanmaken (veiligheidsregel).
 - Bevestiging per fase voordat ik de volgende start.

@@ -691,7 +691,7 @@ function logSync(message) {
         chrome.storage.local.get(["lt_sync_logs"], (res) => {
             if (!isContextValid()) return;
             const logs = res.lt_sync_logs || [];
-            const timeStr = new Date().toLocaleTimeString("nl-NL");
+            const timeStr = new Date().toLocaleTimeString("en-GB");
             logs.unshift(`[${timeStr}] ${message}`);
             if (logs.length > 50) logs.pop();
             chrome.storage.local.set({ lt_sync_logs: logs });

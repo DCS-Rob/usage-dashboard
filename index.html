@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,9 +16,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- FontAwesome for Premium Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js voor Analytics (lokaal gebundeld — CDN geblokkeerd door MV3 CSP) -->
+    <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.7.5">
+    <link rel="stylesheet" href="style.css?v=0.8.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -30,7 +30,7 @@
 
     <!-- MAIN WRAPPER -->
     <div class="app-container">
-        
+
         <!-- LOGIN / REGISTER CONTAINER -->
         <div id="login-container" class="glass-panel auth-panel">
             <div class="auth-header">
@@ -38,49 +38,49 @@
                     <i class="fa-solid fa-gauge-high"></i>
                     <span>Usage Dashboard</span>
                 </div>
-                <h2>Welkom</h2>
-                <p>Meld u aan of maak een nieuw profiel om uw LLM usage bij te houden.</p>
+                <h2>Welcome</h2>
+                <p>Sign in or create a new profile to track your LLM usage.</p>
             </div>
-            
+
             <form id="auth-form" class="auth-form">
                 <div class="form-group">
-                    <label for="username"><i class="fa-solid fa-user"></i> Gebruikersnaam</label>
-                    <input type="text" id="username" placeholder="Voer uw gebruikersnaam in" required autocomplete="username">
+                    <label for="username"><i class="fa-solid fa-user"></i> Username</label>
+                    <input type="text" id="username" placeholder="Enter your username" required autocomplete="username">
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="password"><i class="fa-solid fa-lock"></i> Wachtwoord</label>
-                    <input type="password" id="password" placeholder="Voer uw wachtwoord in" required autocomplete="current-password">
+                    <label for="password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
                 </div>
-                
+
                 <div class="auth-buttons">
-                    <button type="submit" id="btn-login" class="btn-primary">Inloggen</button>
-                    <button type="button" id="btn-register" class="btn-secondary">Registreren</button>
+                    <button type="submit" id="btn-login" class="btn-primary">Log In</button>
+                    <button type="button" id="btn-register" class="btn-secondary">Register</button>
                 </div>
                 <label style="display:flex; align-items:center; gap:8px; margin-top:12px; font-size:0.82rem; color:var(--text-muted); cursor:pointer;">
                     <input type="checkbox" id="chk-remember-me" style="accent-color:var(--color-gemini); width:15px; height:15px;">
-                    Onthoud mij op dit apparaat
+                    Remember me on this device
                 </label>
             </form>
-            
+
             <div id="auth-message" class="auth-message error" style="display: none;"></div>
-            
-            <!-- Mobiel Koppelingspaneel (Back-up fallback) -->
+
+            <!-- Mobile Pairing Panel (back-up fallback) -->
             <div id="mobile-pairing-section" class="mobile-pairing-section mt-4" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 20px; margin-top: 20px; text-align: center;">
-                <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">Of koppel handmatig als mobiele client:</p>
+                <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">Or pair manually as a mobile client:</p>
                 <div class="form-group" style="margin-bottom: 12px; text-align: left;">
-                    <label for="pairing-input-url" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-link"></i> Koppelings-URL</label>
-                    <input type="text" id="pairing-input-url" placeholder="Plak hier de volledige koppel-URL van uw pc (met key en bin)" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 10px 12px; box-sizing: border-box; transition: border-color 0.2s;">
+                    <label for="pairing-input-url" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-link"></i> Pairing URL</label>
+                    <input type="text" id="pairing-input-url" placeholder="Paste the full pairing URL from your PC here (with key and bin)" style="font-size: 0.85rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 10px 12px; box-sizing: border-box; transition: border-color 0.2s;">
                 </div>
                 <button type="button" id="btn-submit-pairing-url" class="btn-secondary w-100" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                    <i class="fa-solid fa-link"></i> Koppelen & Activeren
+                    <i class="fa-solid fa-link"></i> Pair & Activate
                 </button>
             </div>
         </div>
 
         <!-- MAIN DASHBOARD CONTENT (Hidden until logged in) -->
         <div id="dashboard-container" class="main-content" style="display: none;">
-            
+
             <!-- HEADER -->
             <header class="glass-panel app-header">
                 <div class="app-logo">
@@ -91,12 +91,12 @@
                         <h1>Usage Dashboard</h1>
                         <span class="sub-logo">Subscription Usage Dashboard</span>
                     </div>
-                    <div class="header-sync-status" title="Alle automatische scrapers zijn momenteel actief en verbonden via de extensie.">
+                    <div class="header-sync-status" title="All automatic scrapers are currently active and connected via the extension.">
                         <span class="pulse-dot"></span>
                         <span>Live Syncing</span>
                     </div>
                 </div>
-                
+
                 <!-- Navigation Tabs -->
                 <nav class="nav-tabs">
                     <button class="nav-tab active" data-tab="tab-dashboard">Dashboard</button>
@@ -110,7 +110,7 @@
                 <div class="header-right">
                     <!-- Quick Sync Actions -->
                     <div class="header-sync-actions">
-                        <button id="btn-sync-all" class="btn-sync-header" title="Ververs verbruiksgegevens van Claude &amp; ChatGPT">
+                        <button id="btn-sync-all" class="btn-sync-header" title="Refresh usage data from Claude &amp; ChatGPT">
                             <i class="fa-solid fa-arrows-rotate"></i>
                         </button>
                         <a href="https://claude.ai/settings/usage" target="_blank" class="sync-shortcut-icon claude" title="Claude Settings (Live sync)">
@@ -123,23 +123,23 @@
 
                     <!-- Profile Dropdown Section -->
                     <div class="profile-dropdown-wrapper">
-                        <div class="profile-trigger" id="profile-menu-trigger" title="Gebruikersmenu">
+                        <div class="profile-trigger" id="profile-menu-trigger" title="User menu">
                             <div class="profile-avatar-wrapper">
                                 <img src="assets/profile-avatar.svg" class="profile-avatar-img" alt="Profile">
                                 <span class="profile-status-dot"></span>
                             </div>
                             <i class="fa-solid fa-chevron-down profile-arrow"></i>
                         </div>
-                        
+
                         <!-- Dropdown Menu -->
                         <div class="profile-dropdown-menu" id="profile-dropdown-menu">
                             <div class="dropdown-user-info">
-                                <div class="dropdown-label">Aangemeld als</div>
-                                <div id="display-username" class="dropdown-username">Gebruiker</div>
+                                <div class="dropdown-label">Signed in as</div>
+                                <div id="display-username" class="dropdown-username">User</div>
                             </div>
                             <hr class="dropdown-divider">
                             <button id="btn-logout" class="dropdown-item">
-                                <i class="fa-solid fa-right-from-bracket"></i> Uitloggen
+                                <i class="fa-solid fa-right-from-bracket"></i> Log Out
                             </button>
                         </div>
                     </div>
@@ -154,7 +154,7 @@
 
 
                     <div class="dashboard-grid">
-                        
+
                         <!-- CLAUDE CARD -->
                         <div class="glass-panel provider-card claude-card" id="card-claude">
                             <div class="provider-header">
@@ -164,12 +164,12 @@
                                     </div>
                                     <div>
                                         <h3>Claude Pro</h3>
-                                        <span class="provider-meta">Anthropic • 5u Rolling Limiet</span>
+                                        <span class="provider-meta">Anthropic • 5h Rolling Limit</span>
                                     </div>
                                 </div>
                                 <span class="badge badge-claude">Web Scraped</span>
                             </div>
-                            
+
                             <div class="progress-visualization">
                                 <div class="progress-ring-container">
                                     <svg class="progress-ring" width="160" height="160">
@@ -178,27 +178,27 @@
                                     </svg>
                                     <div class="progress-value">
                                         <span class="pct" id="pct-claude">100%</span>
-                                        <span class="lbl">Over</span>
+                                        <span class="lbl">Left</span>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="card-stats">
                                 <div class="sync-status-indicator mb-2" style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
                                     <div>
-                                        <i class="fa-solid fa-circle-check text-green"></i> 
-                                        <span id="sync-time-claude">Niet gesynchroniseerd</span>
+                                        <i class="fa-solid fa-circle-check text-green"></i>
+                                        <span id="sync-time-claude">Not synced</span>
                                     </div>
-                                    <button class="btn-sync-now" data-provider="claude" title="Nu synchroniseren via Claude tab">
+                                    <button class="btn-sync-now" data-provider="claude" title="Sync now via Claude tab">
                                         <i class="fa-solid fa-arrows-rotate"></i>
                                     </button>
                                 </div>
                                 <!-- Current Session Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
-                                    <div class="section-subtitle-small">Lopende Sessie (Pace)</div>
+                                    <div class="section-subtitle-small">Current Session (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Capaciteit:</span>
+                                            <span>Remaining Capacity:</span>
                                             <span class="font-mono pct-val" id="pace-cap-pct-claude">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
@@ -207,7 +207,7 @@
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Tijd (Reset in <span id="timer-claude" class="font-mono">Volledig Vrij</span>):</span>
+                                            <span>Remaining Time (Resets in <span id="timer-claude" class="font-mono">Fully Free</span>):</span>
                                             <span class="font-mono pct-val" id="pace-time-pct-claude">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
@@ -221,10 +221,10 @@
 
                                 <!-- Weekly Limit Parallel Bars -->
                                 <div class="parallel-pace-section">
-                                    <div class="section-subtitle-small">Wekelijkse Limiet (Pace)</div>
+                                    <div class="section-subtitle-small">Weekly Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Capaciteit:</span>
+                                            <span>Remaining Capacity:</span>
                                             <span class="font-mono pct-val" id="weekly-cap-pct-claude">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
@@ -233,7 +233,7 @@
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Tijd (Reset in <span id="weekly-timer-claude" class="font-mono">Reset Dinsdag 06:00</span>):</span>
+                                            <span>Remaining Time (Resets in <span id="weekly-timer-claude" class="font-mono">Resets Tuesday 06:00</span>):</span>
                                             <span class="font-mono pct-val" id="weekly-time-pct-claude">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
@@ -258,12 +258,12 @@
                                     </div>
                                     <div>
                                         <h3>ChatGPT Business</h3>
-                                        <span class="provider-meta">OpenAI • Workspace Limieten</span>
+                                        <span class="provider-meta">OpenAI • Workspace Limits</span>
                                     </div>
                                 </div>
                                 <span class="badge badge-chatgpt">Analytics Scraped</span>
                             </div>
-                            
+
                             <div class="progress-visualization">
                                 <div class="progress-ring-container">
                                     <svg class="progress-ring" width="160" height="160">
@@ -272,28 +272,28 @@
                                     </svg>
                                     <div class="progress-value">
                                         <span class="pct" id="pct-chatgpt">100%</span>
-                                        <span class="lbl">Over</span>
+                                        <span class="lbl">Left</span>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="card-stats">
                                 <div class="sync-status-indicator mb-2" style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
                                     <div>
-                                        <i class="fa-solid fa-circle-check text-green"></i> 
-                                        <span id="sync-time-chatgpt">Niet gesynchroniseerd</span>
+                                        <i class="fa-solid fa-circle-check text-green"></i>
+                                        <span id="sync-time-chatgpt">Not synced</span>
                                     </div>
-                                    <button class="btn-sync-now" data-provider="chatgpt" title="Nu synchroniseren via ChatGPT tab">
+                                    <button class="btn-sync-now" data-provider="chatgpt" title="Sync now via ChatGPT tab">
                                         <i class="fa-solid fa-arrows-rotate"></i>
                                     </button>
                                 </div>
 
                                 <!-- 5 Hour Limit Parallel Bars -->
                                 <div class="parallel-pace-section mb-3">
-                                    <div class="section-subtitle-small">5 Uur Limiet (Pace)</div>
+                                    <div class="section-subtitle-small">5 Hour Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Capaciteit:</span>
+                                            <span>Remaining Capacity:</span>
                                             <span class="font-mono pct-val" id="pace-cap-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
@@ -302,7 +302,7 @@
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Tijd (Reset in <span id="timer-chatgpt" class="font-mono">Actief</span>):</span>
+                                            <span>Remaining Time (Resets in <span id="timer-chatgpt" class="font-mono">Active</span>):</span>
                                             <span class="font-mono pct-val" id="pace-time-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
@@ -316,10 +316,10 @@
 
                                 <!-- Weekly Limit Parallel Bars -->
                                 <div class="parallel-pace-section">
-                                    <div class="section-subtitle-small">Wekelijkse Limiet (Pace)</div>
+                                    <div class="section-subtitle-small">Weekly Limit (Pace)</div>
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Capaciteit:</span>
+                                            <span>Remaining Capacity:</span>
                                             <span class="font-mono pct-val" id="weekly-cap-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
@@ -328,7 +328,7 @@
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Tijd (Reset in <span id="weekly-timer-chatgpt" class="font-mono">Actief</span>):</span>
+                                            <span>Remaining Time (Resets in <span id="weekly-timer-chatgpt" class="font-mono">Active</span>):</span>
                                             <span class="font-mono pct-val" id="weekly-time-pct-chatgpt">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
@@ -353,12 +353,12 @@
                                     </div>
                                     <div>
                                         <h3>Gemini Advanced</h3>
-                                        <span class="provider-meta">Google • 24u Rolling Limiet</span>
+                                        <span class="provider-meta">Google • 24h Rolling Limit</span>
                                     </div>
                                 </div>
                                 <span class="badge badge-gemini">Web Scraped</span>
                             </div>
-                            
+
                             <div class="progress-visualization">
                                 <div class="progress-ring-container">
                                     <svg class="progress-ring" width="160" height="160">
@@ -367,34 +367,34 @@
                                     </svg>
                                     <div class="progress-value">
                                         <span class="pct" id="pct-gemini">100%</span>
-                                        <span class="lbl">Over</span>
+                                        <span class="lbl">Left</span>
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="card-stats">
                                 <div class="sync-status-indicator mb-2">
-                                    <i class="fa-solid fa-circle-question info-tooltip" title="Google publiceert geen exacte usage pagina. Standaard limiet is dynamisch: ca. 50 berichten per 3 uur voor Gemini 1.5 Pro. Pas dit aan in Instellingen."></i> 
-                                    <span>Handmatige controle</span>
+                                    <i class="fa-solid fa-circle-question info-tooltip" title="Google does not publish an exact usage page. The default limit is dynamic: ~50 messages per 3 hours for Gemini 1.5 Pro. Adjust this in Settings."></i>
+                                    <span>Manual tracking</span>
                                 </div>
                                 <div class="stat-row">
-                                    <span>Berichten Over:</span>
+                                    <span>Messages Left:</span>
                                     <span class="stat-val font-mono" id="msg-limit-gemini">100 / 100</span>
                                 </div>
                                 <div class="stat-row">
-                                    <span>Gebruikt in 24 uur:</span>
+                                    <span>Used in 24 hours:</span>
                                     <span class="stat-val font-mono" id="msg-used-gemini">0</span>
                                 </div>
                                 <div class="stat-row highlight mb-3">
-                                    <span>Volledige reset in:</span>
-                                    <span class="stat-val font-mono reset-timer" id="timer-gemini">Geen limiet</span>
+                                    <span>Full reset in:</span>
+                                    <span class="stat-val font-mono reset-timer" id="timer-gemini">No limit</span>
                                 </div>
 
                                 <!-- Parallel Progress Bars -->
                                 <div class="parallel-pace-section">
                                     <div class="parallel-bar-row">
                                         <div class="parallel-bar-label">
-                                            <span>Resterende Capaciteit:</span>
+                                            <span>Remaining Capacity:</span>
                                             <span class="font-mono pct-val" id="pace-cap-pct-gemini">100%</span>
                                         </div>
                                         <div class="parallel-bar-track">
@@ -403,7 +403,7 @@
                                     </div>
                                     <div class="parallel-bar-row mt-2">
                                         <div class="parallel-bar-label">
-                                            <span>Tijd tot Reset (24u):</span>
+                                            <span>Time until Reset (24h):</span>
                                             <span class="font-mono pct-val" id="pace-time-pct-gemini">100%</span>
                                         </div>
                                         <div class="parallel-bar-track time-track">
@@ -425,14 +425,14 @@
                     <div class="dashboard-secondary-grid">
                         <div class="glass-panel detail-card">
                             <div class="card-header-with-actions">
-                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Recente Activiteit</h3>
-                                <button id="btn-clear-recent" class="btn-text">Leegmaken</button>
+                                <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</h3>
+                                <button id="btn-clear-recent" class="btn-text">Clear</button>
                             </div>
-                            
+
                             <div class="log-feed-container">
                                 <div id="log-feed-empty" class="feed-empty-state">
                                     <i class="fa-solid fa-list-check"></i>
-                                    <p>Nog geen activiteit gelogd. Start met praten in Claude of ChatGPT en de extensie registreert het live!</p>
+                                    <p>No activity logged yet. Start chatting in Claude or ChatGPT and the extension will record it live!</p>
                                 </div>
                                 <ul id="log-feed-list" class="log-feed-list">
                                     <!-- Dynamic log items -->
@@ -447,45 +447,45 @@
                     <!-- Quick Statistics Grid -->
                     <div class="analytics-summary-grid mb-4">
                         <div class="glass-panel summary-card border-claude">
-                            <span class="summary-label">Totaal Claude (7d)</span>
+                            <span class="summary-label">Total Claude (7d)</span>
                             <span class="summary-value" id="stats-total-claude">0 t</span>
-                            <span class="summary-subtext" id="stats-avg-claude">Gem. 0 t / dag</span>
+                            <span class="summary-subtext" id="stats-avg-claude">Avg. 0 t / day</span>
                         </div>
                         <div class="glass-panel summary-card border-chatgpt">
-                            <span class="summary-label">Totaal ChatGPT (7d)</span>
-                            <span class="summary-value" id="stats-total-chatgpt">0 p</span>
-                            <span class="summary-subtext" id="stats-avg-chatgpt">Gem. 0 / dag</span>
+                            <span class="summary-label">Total ChatGPT (7d)</span>
+                            <span class="summary-value" id="stats-total-chatgpt">0 m</span>
+                            <span class="summary-subtext" id="stats-avg-chatgpt">Avg. 0 / day</span>
                         </div>
                         <div class="glass-panel summary-card border-gemini">
-                            <span class="summary-label">Totaal Gemini (7d)</span>
-                            <span class="summary-value" id="stats-total-gemini">0 p</span>
-                            <span class="summary-subtext" id="stats-avg-gemini">Gem. 0 / dag</span>
+                            <span class="summary-label">Total Gemini (7d)</span>
+                            <span class="summary-value" id="stats-total-gemini">0 m</span>
+                            <span class="summary-subtext" id="stats-avg-gemini">Avg. 0 / day</span>
                         </div>
                         <div class="glass-panel summary-card border-accent">
-                            <span class="summary-label">Drukste Dag (7d)</span>
+                            <span class="summary-label">Busiest Day (7d)</span>
                             <span class="summary-value" id="stats-peak-day">-</span>
-                            <span class="summary-subtext" id="stats-peak-value">0 activiteit(en)</span>
+                            <span class="summary-subtext" id="stats-peak-value">0 activities</span>
                         </div>
                     </div>
 
                     <div class="glass-panel">
-                        <h3><i class="fa-solid fa-chart-line"></i> Verbruiksstatistieken</h3>
-                        <p class="section-desc">Grafische weergave van je geregistreerde berichten over de afgelopen week.</p>
-                        
+                        <h3><i class="fa-solid fa-chart-line"></i> Usage Statistics</h3>
+                        <p class="section-desc">Graphical view of your recorded messages over the past week.</p>
+
                         <div class="chart-container mt-4">
                             <canvas id="usage-chart"></canvas>
                         </div>
                     </div>
 
                     <div class="glass-panel mt-4">
-                        <h3><i class="fa-solid fa-history"></i> Volledige Log Historie</h3>
+                        <h3><i class="fa-solid fa-history"></i> Full Log History</h3>
                         <div class="table-actions">
                             <div class="search-box">
                                 <i class="fa-solid fa-magnifying-glass"></i>
-                                <input type="text" id="log-search" placeholder="Zoek logs...">
+                                <input type="text" id="log-search" placeholder="Search logs...">
                             </div>
                             <button id="btn-delete-selected" class="btn-danger btn-small" style="display: none;">
-                                <i class="fa-solid fa-trash-can"></i> Selectie Verwijderen
+                                <i class="fa-solid fa-trash-can"></i> Delete Selection
                             </button>
                         </div>
 
@@ -494,11 +494,11 @@
                                 <thead>
                                     <tr>
                                         <th width="40"><input type="checkbox" id="check-all-logs"></th>
-                                        <th>Tijdstip</th>
-                                        <th>Model / Abonnement</th>
-                                        <th>Omschrijving</th>
-                                        <th>Geschat Verbruik</th>
-                                        <th width="80">Acties</th>
+                                        <th>Time</th>
+                                        <th>Model / Subscription</th>
+                                        <th>Description</th>
+                                        <th>Estimated Usage</th>
+                                        <th width="80">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="table-logs-body">
@@ -506,7 +506,7 @@
                                 </tbody>
                             </table>
                             <div id="table-empty-state" class="table-empty" style="display: none;">
-                                Geen loggegevens gevonden.
+                                No log data found.
                             </div>
                         </div>
                     </div>
@@ -515,21 +515,21 @@
                 <!-- 4. SETTINGS TAB -->
                 <section id="tab-settings" class="tab-pane">
                     <div class="settings-layout">
-                        
+
                         <!-- LIMITS MANAGEMENT -->
                         <div class="glass-panel">
-                            <h3><i class="fa-solid fa-sliders"></i> Limiet Instellingen</h3>
-                            <p class="section-desc">Pas de limieten aan naar de huidige richtlijnen van je abonnementen.</p>
-                            
+                            <h3><i class="fa-solid fa-sliders"></i> Limit Settings</h3>
+                            <p class="section-desc">Adjust the limits to match the current guidelines of your subscriptions.</p>
+
                             <form id="settings-limits-form" class="mt-3">
                                 <div class="settings-section-title">Claude Pro (Rolling Window)</div>
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label for="limit-claude-tokens">Max Tokens in Venster</label>
+                                        <label for="limit-claude-tokens">Max Tokens in Window</label>
                                         <input type="number" id="limit-claude-tokens" value="200000" min="1000" step="5000">
                                     </div>
                                     <div class="form-group">
-                                        <label for="limit-claude-hours">Venster Duur (uren)</label>
+                                        <label for="limit-claude-hours">Window Duration (hours)</label>
                                         <input type="number" id="limit-claude-hours" value="5" min="1" max="24">
                                     </div>
                                 </div>
@@ -537,11 +537,11 @@
                                 <div class="settings-section-title mt-3">ChatGPT Business (Rolling Limit)</div>
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label for="limit-chatgpt-msg">Max Berichten</label>
+                                        <label for="limit-chatgpt-msg">Max Messages</label>
                                         <input type="number" id="limit-chatgpt-msg" value="120" min="1">
                                     </div>
                                     <div class="form-group">
-                                        <label for="limit-chatgpt-hours">Venster Duur (uren)</label>
+                                        <label for="limit-chatgpt-hours">Window Duration (hours)</label>
                                         <input type="number" id="limit-chatgpt-hours" value="3" min="1" max="24">
                                     </div>
                                 </div>
@@ -549,108 +549,108 @@
                                 <div class="settings-section-title mt-3">Gemini Advanced (Manual Buffer)</div>
                                 <div class="form-grid">
                                     <div class="form-group">
-                                        <label for="limit-gemini-msg">Max Berichten</label>
+                                        <label for="limit-gemini-msg">Max Messages</label>
                                         <input type="number" id="limit-gemini-msg" value="100" min="1">
                                     </div>
                                     <div class="form-group">
-                                        <label for="limit-gemini-hours">Venster Duur (uren)</label>
+                                        <label for="limit-gemini-hours">Window Duration (hours)</label>
                                         <input type="number" id="limit-gemini-hours" value="24" min="1" max="168">
                                     </div>
                                 </div>
 
-                                <button type="submit" class="btn-primary mt-3">Limieten Opslaan</button>
+                                <button type="submit" class="btn-primary mt-3">Save Limits</button>
                             </form>
                         </div>
 
                         <!-- EXTENSION STATUS -->
                         <div class="glass-panel">
-                            <h3><i class="fa-solid fa-arrows-spin"></i> Scraper Koppeling Status</h3>
-                            <p class="section-desc">Het dashboard haalt gegevens op uit je openstaande browsertabbladen.</p>
-                            
+                            <h3><i class="fa-solid fa-arrows-spin"></i> Scraper Connection Status</h3>
+                            <p class="section-desc">The dashboard pulls data from your open browser tabs.</p>
+
                             <div class="scraper-status-list mt-3">
                                 <div class="status-item-box">
                                     <div class="label-row">
                                         <strong>Claude Pro Scraper:</strong>
-                                        <span id="settings-status-claude" class="badge">Niet Actief</span>
+                                        <span id="settings-status-claude" class="badge">Inactive</span>
                                     </div>
-                                    <p class="desc">Open <a href="https://claude.ai/settings/usage" target="_blank">claude.ai/settings/usage</a> om je resterende tokens te updaten.</p>
+                                    <p class="desc">Open <a href="https://claude.ai/settings/usage" target="_blank">claude.ai/settings/usage</a> to update your remaining tokens.</p>
                                 </div>
 
                                 <div class="status-item-box mt-3">
                                     <div class="label-row">
                                         <strong>ChatGPT Business Scraper:</strong>
-                                        <span id="settings-status-chatgpt" class="badge">Niet Actief</span>
+                                        <span id="settings-status-chatgpt" class="badge">Inactive</span>
                                     </div>
-                                    <p class="desc">Open <a href="https://chatgpt.com/codex/cloud/settings/analytics#personal-usage" target="_blank">chatgpt.com settings/analytics</a> om je verbruiksgrafiek te scannen.</p>
+                                    <p class="desc">Open <a href="https://chatgpt.com/codex/cloud/settings/analytics#personal-usage" target="_blank">chatgpt.com settings/analytics</a> to scan your usage chart.</p>
                                 </div>
 
                                 <div class="status-item-box mt-3">
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <strong>Synchronisatie Logboek (Debug):</strong>
-                                        <button id="btn-clear-sync-logs" class="btn-small" style="padding: 2px 6px; font-size: 0.7rem;"><i class="fa-solid fa-eraser"></i> Leegmaken</button>
+                                        <strong>Sync Log (Debug):</strong>
+                                        <button id="btn-clear-sync-logs" class="btn-small" style="padding: 2px 6px; font-size: 0.7rem;"><i class="fa-solid fa-eraser"></i> Clear</button>
                                     </div>
                                     <div id="sync-debug-logs" class="font-mono" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 10px; font-size: 0.75rem; max-height: 180px; overflow-y: auto; color: #a0aec0; margin-top: 5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;">
-                                        Geen loggegevens beschikbaar. Klik op synchroniseren of open een instellingenpagina om logs te genereren.
+                                        No log data available. Click sync or open a settings page to generate logs.
                                     </div>
-                                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Build info laden...</div>
+                                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Loading build info...</div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- MOBILE SYNC PANEL -->
                         <div class="glass-panel" id="settings-mobile-sync-panel">
-                            <h3><i class="fa-solid fa-mobile-screen-button"></i> Mobiele Synchronisatie (PWA)</h3>
-                            <p class="section-desc">Koppel je mobiele telefoon om je dashboard live onderweg te bekijken.</p>
-                            
+                            <h3><i class="fa-solid fa-mobile-screen-button"></i> Mobile Sync (PWA)</h3>
+                            <p class="section-desc">Pair your mobile phone to view your dashboard live on the go.</p>
+
                             <div class="scraper-status-list mt-3">
                                 <div class="status-item-box" id="sync-setup-box">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                         <strong>Status:</strong>
-                                        <span id="sync-connection-status" class="badge">Niet Gekoppeld</span>
+                                        <span id="sync-connection-status" class="badge">Not Paired</span>
                                     </div>
-                                    
+
                                     <div id="sync-setup-actions">
-                                        <p class="desc mb-3">Klik op de knop om een unieke, beveiligde koppelcode te genereren en cloud-synchronisatie in te schakelen.</p>
+                                        <p class="desc mb-3">Click the button to generate a unique, secure pairing code and enable cloud sync.</p>
                                         <div class="form-group" style="margin-bottom: 12px; text-align: left;">
-                                            <label for="sync-provider-select" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-bolt" style="color: var(--color-gemini);"></i> Verbinding</label>
+                                            <label for="sync-provider-select" style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 6px;"><i class="fa-solid fa-bolt" style="color: var(--color-gemini);"></i> Connection</label>
                                             <select id="sync-provider-select" style="font-size: 0.82rem; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #fff; width: 100%; padding: 9px 10px; box-sizing: border-box;">
-                                                <option value="npoint" selected>Standaard &middot; werkt overal (iets trager)</option>
-                                                <option value="firebase" disabled>Firebase &middot; sneller &mdash; nog niet ingesteld</option>
+                                                <option value="npoint" selected>Default &middot; works everywhere (a bit slower)</option>
+                                                <option value="firebase" disabled>Firebase &middot; faster &mdash; not set up yet</option>
                                             </select>
-                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">De standaardverbinding werkt voor iedereen zonder installatie. De snelle Firebase-optie komt later.</p>
+                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">The default connection works for everyone without setup. The fast Firebase option is coming later.</p>
                                         </div>
                                         <button type="button" id="btn-generate-sync" class="btn-primary w-100">
-                                            <i class="fa-solid fa-key"></i> Genereer Koppelcode
+                                            <i class="fa-solid fa-key"></i> Generate Pairing Code
                                         </button>
                                     </div>
-                                    
+
                                     <div id="sync-active-info" style="display: none;">
                                         <div class="form-group mb-2">
-                                            <label style="font-size: 0.75rem; color: var(--text-muted);">Jouw Unieke Koppelcode (Geheim):</label>
+                                            <label style="font-size: 0.75rem; color: var(--text-muted);">Your Unique Pairing Code (Secret):</label>
                                             <div style="display: flex; gap: 8px;">
                                                 <input type="text" id="sync-pairing-key" readonly style="font-family: monospace; font-size: 1.05rem; font-weight: bold; text-align: center; background: rgba(0,0,0,0.4); border: 1px solid var(--color-gemini); color: #fff; flex: 1; letter-spacing: 2px;" value="">
-                                                <button type="button" id="btn-copy-pairing-key" class="btn-secondary" style="padding: 0 12px;" title="Kopieer Code">
+                                                <button type="button" id="btn-copy-pairing-key" class="btn-secondary" style="padding: 0 12px;" title="Copy Code">
                                                     <i class="fa-solid fa-copy"></i>
                                                 </button>
                                             </div>
                                         </div>
 
                                         <div class="form-group mb-2">
-                                            <label style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-server" style="color: var(--color-gemini);"></i> PWA-host (waar de telefoon de app laadt):</label>
+                                            <label style="font-size: 0.75rem; color: var(--text-muted);"><i class="fa-solid fa-server" style="color: var(--color-gemini);"></i> PWA host (where the phone loads the app):</label>
                                             <div style="display: flex; gap: 8px;">
                                                 <input type="text" id="sync-pwa-host" style="font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.12); color: #fff; flex: 1; padding: 6px 8px; border-radius: 6px;" placeholder="https://dcs-rob.github.io/usage-dashboard">
-                                                <button type="button" id="btn-save-pwa-host" class="btn-secondary" style="padding: 0 12px;" title="Host opslaan">
+                                                <button type="button" id="btn-save-pwa-host" class="btn-secondary" style="padding: 0 12px;" title="Save host">
                                                     <i class="fa-solid fa-floppy-disk"></i>
                                                 </button>
                                             </div>
-                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">Standaard: publieke GitHub Pages (werkt op elke telefoon). Een eigen Tailscale-host kan ook — die is volledig privé maar vereist Tailscale op de telefoon.</p>
+                                            <p style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; line-height: 1.4;">Default: public GitHub Pages (works on any phone). Your own Tailscale host is also possible — fully private but requires Tailscale on the phone.</p>
                                         </div>
 
-                                        <p class="desc mb-2" style="font-size: 0.78rem;"><strong>Hoe te installeren op je mobiel:</strong></p>
+                                        <p class="desc mb-2" style="font-size: 0.78rem;"><strong>How to install on your phone:</strong></p>
                                         <ol class="desc" style="padding-left: 1.25rem; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;">
-                                            <li>Scan de QR-code of klik op de link hieronder op je telefoon.</li>
-                                            <li>Voeg de pagina toe aan je beginscherm (installeer als PWA).</li>
-                                            <li>De gegevens worden nu live en beveiligd gesynchroniseerd!</li>
+                                            <li>Scan the QR code or tap the link below on your phone.</li>
+                                            <li>Add the page to your home screen (install as a PWA).</li>
+                                            <li>Your data now syncs live and securely!</li>
                                         </ol>
 
                                         <!-- QR Code / Link container -->
@@ -664,7 +664,7 @@
                                         </div>
 
                                         <button type="button" id="btn-disable-sync" class="btn-danger w-100 mt-3" style="padding: 0.45rem 1rem; font-size: 0.8rem;">
-                                            <i class="fa-solid fa-link-slash"></i> Synchronisatie Uitschakelen
+                                            <i class="fa-solid fa-link-slash"></i> Disable Sync
                                         </button>
                                     </div>
                                 </div>
@@ -673,23 +673,23 @@
 
                         <!-- DATA ACTIONS -->
                         <div class="glass-panel">
-                            <h3><i class="fa-solid fa-database"></i> Data Beheer</h3>
-                            <p class="section-desc">Exporteer of wis je verbruiksgeschiedenis.</p>
-                            
+                            <h3><i class="fa-solid fa-database"></i> Data Management</h3>
+                            <p class="section-desc">Export or clear your usage history.</p>
+
                             <div class="data-actions-grid mt-3">
                                 <button id="btn-export-data" class="btn-secondary-outline">
-                                    <i class="fa-solid fa-download"></i> Exporteer Data (JSON)
+                                    <i class="fa-solid fa-download"></i> Export Data (JSON)
                                 </button>
-                                
+
                                 <div class="import-wrapper">
                                     <button id="btn-trigger-import" class="btn-secondary-outline w-100">
-                                        <i class="fa-solid fa-upload"></i> Importeer Data
+                                        <i class="fa-solid fa-upload"></i> Import Data
                                     </button>
                                     <input type="file" id="import-file-input" style="display: none;" accept=".json">
                                 </div>
-                                
+
                                 <button id="btn-clear-all" class="btn-danger w-100">
-                                    <i class="fa-solid fa-trash-can"></i> Wis Alle Gegevens
+                                    <i class="fa-solid fa-trash-can"></i> Clear All Data
                                 </button>
                             </div>
                         </div>
@@ -703,6 +703,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.7.5"></script>
+    <script src="app.js?v=0.8.0"></script>
 </body>
 </html>

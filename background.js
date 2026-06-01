@@ -170,7 +170,7 @@ function alignRollingLogs(user, model, rawUsed) {
                     size: "medium",
                     tokens: 0,
                     threadId: "",
-                    note: "Gesynchroniseerde status correctie"
+                    note: "Synced status correction"
                 });
             }
         }
@@ -189,7 +189,7 @@ function alignRollingLogs(user, model, rawUsed) {
                 size: "custom",
                 tokens: diffTokens,
                 threadId: "",
-                note: "Gesynchroniseerde status correctie"
+                note: "Synced status correction"
             });
         }
     }
@@ -278,7 +278,7 @@ function logSync(message) {
     console.log("[USAGE DASHBOARD Background Sync Log]", message);
     chrome.storage.local.get(["lt_sync_logs"], (res) => {
         const logs = res.lt_sync_logs || [];
-        const timeStr = new Date().toLocaleTimeString("nl-NL");
+        const timeStr = new Date().toLocaleTimeString("en-GB");
         logs.unshift(`[${timeStr}] ${message}`);
         if (logs.length > 50) logs.pop();
         chrome.storage.local.set({ lt_sync_logs: logs });

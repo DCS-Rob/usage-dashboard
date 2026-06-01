@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.7.5";
+const APP_VERSION = "0.8.0";
 
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
@@ -42,12 +42,12 @@ function renderBuildInfoStrip() {
                     render(swCache.replace("usagedashboard-cache-", ""));
                 };
                 navigator.serviceWorker.controller.postMessage({ type: "GET_SW_VERSION" }, [channel.port2]);
-                setTimeout(() => { if (!answered) render("geen-antw"); }, 1500);
+                setTimeout(() => { if (!answered) render("no-answer"); }, 1500);
             } catch (e) {
                 render("err");
             }
         } else if (env === "PWA") {
-            render("geen-controller");
+            render("no-controller");
         } else {
             try {
                 chrome.storage.local.get(["lt_sync_config"], (res) => {
@@ -530,7 +530,7 @@ function renderDashboardProgress() {
     const claudeWindowMs = claudeSettings.windowHours * 60 * 60 * 1000;
     
     let claudeTokensUsed = 0;
-    let claudeLastSyncTime = "Niet gesynchroniseerd";
+    let claudeLastSyncTime = "Not synced";
     let claudePct = 100;
     
     // Check if we have browser scrape data
@@ -566,7 +566,7 @@ function renderDashboardProgress() {
     
     // Estimate reset countdown for Claude
     let claudeTimePct = 0;
-    let timerText = "Volledig Vrij";
+    let timerText = "Fully Free";
     
     if (state.syncStatus.claude && state.syncStatus.claude.resetSession) {
         let rs = state.syncStatus.claude.resetSession;
@@ -600,7 +600,7 @@ function renderDashboardProgress() {
     // --- Claude Weekly Limit Calculations ---
     let claudeWeeklyPct = 100;
     let claudeWeeklyTimePct = 0;
-    let claudeWeeklyTimerText = "Dinsdag 06:00";
+    let claudeWeeklyTimerText = "Tuesday 06:00";
     
     if (state.syncStatus.claude && state.syncStatus.claude.pctRemainingWeekly !== undefined && state.syncStatus.claude.pctRemainingWeekly !== null) {
         const sync = state.syncStatus.claude;
@@ -654,7 +654,7 @@ function renderDashboardProgress() {
                     claudeWeeklyTimePct = (diffMs / weekMs) * 100;
                     claudeWeeklyTimerText = formatWeeklyTimeMs(diffMs);
                 } else {
-                    claudeWeeklyTimerText = "Herstellen...";
+                    claudeWeeklyTimerText = "Resetting...";
                 }
             } else {
                 // --- Pad 4: relatief tijdformaat "Resets in 6d 20u 47m" of "Herstelt over 6d 20u" ---
@@ -707,9 +707,9 @@ function renderDashboardProgress() {
     const gptSettings = state.userSettings.chatgpt;
     const gptWindowMs = gptSettings.windowHours * 60 * 60 * 1000;
     
-    let gptLastSyncTime = "Niet gesynchroniseerd";
+    let gptLastSyncTime = "Not synced";
     let gptPct = 100;
-    let gptTimerText = "Actief (Limiet Vrij)";
+    let gptTimerText = "Active (Limit Free)";
     let diffMsForPace = null;
     
     if (state.syncStatus.chatgpt) {
@@ -750,7 +750,7 @@ function renderDashboardProgress() {
                     gptTimerText = sync.reset5h; // Fallback to raw string
                 }
             } else {
-                gptTimerText = "Limiet Actief";
+                gptTimerText = "Limit Active";
             }
         } else {
             // Fallback for raw numbers if scraped message counts instead of percentages
@@ -763,7 +763,7 @@ function renderDashboardProgress() {
                 const timeLeftMs = gptWindowMs - (now - oldestLog.timestamp);
                 gptTimerText = formatTimeMs(timeLeftMs);
             } else {
-                gptTimerText = "Actief";
+                gptTimerText = "Active";
             }
         }
     } else {
@@ -777,7 +777,7 @@ function renderDashboardProgress() {
             const timeLeftMs = gptWindowMs - (now - oldestLog.timestamp);
             gptTimerText = formatTimeMs(timeLeftMs);
         } else {
-            gptTimerText = "Actief (Limiet Vrij)";
+            gptTimerText = "Active (Limit Free)";
         }
     }
     
@@ -813,7 +813,7 @@ function renderDashboardProgress() {
     }
 
     let weeklyTimePct = 0;
-    let weeklyTimerText = "Volledig Vrij";
+    let weeklyTimerText = "Fully Free";
     if (state.syncStatus.chatgpt && state.syncStatus.chatgpt.resetWeekly) {
         const resetWeekly = state.syncStatus.chatgpt.resetWeekly;
         const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11, mrt: 2, mei: 4, okt: 9 };
@@ -876,7 +876,7 @@ function renderDashboardProgress() {
 
     let geminiTimePct = 0;
     if (geminiSync && geminiSync.limitReached) {
-        document.getElementById("timer-gemini").innerText = "Limiet bereikt";
+        document.getElementById("timer-gemini").innerText = "Limit reached";
         geminiTimePct = 0;
     } else if (recentGemini.length > 0 && geminiPct < 99) {
         const oldestLog = recentGemini[0];
@@ -884,7 +884,7 @@ function renderDashboardProgress() {
         document.getElementById("timer-gemini").innerText = formatTimeMs(timeLeftMs);
         geminiTimePct = (timeLeftMs / geminiWindowMs) * 100;
     } else {
-        document.getElementById("timer-gemini").innerText = "Volledig Vrij";
+        document.getElementById("timer-gemini").innerText = "Fully Free";
         geminiTimePct = 0;
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
@@ -911,20 +911,20 @@ function updateScraperStatusLabels() {
     if (claudeStatus) {
         if (state.syncStatus.claude) {
             claudeStatus.className = getStatusClass(state.syncStatus.claude.lastSynced);
-            claudeStatus.innerText = "Gekoppeld (" + formatTimeAgo(state.syncStatus.claude.lastSynced) + ")";
+            claudeStatus.innerText = "Connected (" + formatTimeAgo(state.syncStatus.claude.lastSynced) + ")";
         } else {
             claudeStatus.className = "badge";
-            claudeStatus.innerText = "Niet Actief";
+            claudeStatus.innerText = "Inactive";
         }
     }
     
     if (gptStatus) {
         if (state.syncStatus.chatgpt) {
             gptStatus.className = getStatusClass(state.syncStatus.chatgpt.lastSynced);
-            gptStatus.innerText = "Gekoppeld (" + formatTimeAgo(state.syncStatus.chatgpt.lastSynced) + ")";
+            gptStatus.innerText = "Connected (" + formatTimeAgo(state.syncStatus.chatgpt.lastSynced) + ")";
         } else {
             gptStatus.className = "badge";
-            gptStatus.innerText = "Niet Actief";
+            gptStatus.innerText = "Inactive";
         }
     }
 
@@ -933,13 +933,13 @@ function updateScraperStatusLabels() {
         const geminiSync = state.syncStatus.gemini;
         if (geminiSync && geminiSync.limitReached) {
             geminiStatus.className = "badge badge-danger";
-            geminiStatus.innerText = "Limiet bereikt (" + formatTimeAgo(geminiSync.lastSynced) + ")";
+            geminiStatus.innerText = "Limit reached (" + formatTimeAgo(geminiSync.lastSynced) + ")";
         } else if (geminiSync && geminiSync.lastSynced) {
             geminiStatus.className = getStatusClass(geminiSync.lastSynced);
-            geminiStatus.innerText = "Actief (" + formatTimeAgo(geminiSync.lastSynced) + ")";
+            geminiStatus.innerText = "Active (" + formatTimeAgo(geminiSync.lastSynced) + ")";
         } else {
             geminiStatus.className = "badge";
-            geminiStatus.innerText = "Teller-modus";
+            geminiStatus.innerText = "Counter mode";
         }
     }
 
@@ -948,7 +948,7 @@ function updateScraperStatusLabels() {
     if (logBox && typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get(["lt_sync_logs"], (res) => {
             const logs = res.lt_sync_logs || [];
-            const newText = logs.length > 0 ? logs.join("\n") : "Geen loggegevens beschikbaar. Klik op synchroniseren of open een instellingentab om logs te genereren.";
+            const newText = logs.length > 0 ? logs.join("\n") : "No log data available. Click sync or open a settings tab to generate logs.";
             if (logBox.textContent !== newText) {
                 logBox.textContent = newText;
             }
@@ -1007,7 +1007,7 @@ function renderLogsList() {
         const recentLogs = sortedLogs.slice(0, 5);
         
         recentLogs.forEach(l => {
-            const description = l.note || (l.model === "claude" ? "Automatische token-registratie" : "Automatische prompt-registratie");
+            const description = l.note || (l.model === "claude" ? "Automatic token logging" : "Automatic prompt logging");
             
             const li = document.createElement("li");
             li.className = "log-item";
@@ -1043,13 +1043,13 @@ function renderLogsList() {
         tableEmpty.style.display = "none";
         filteredLogs.forEach(l => {
             const tr = document.createElement("tr");
-            const noteText = l.note || (l.model === "claude" ? "Automatische token-registratie" : "Automatische prompt-registratie");
+            const noteText = l.note || (l.model === "claude" ? "Automatic token logging" : "Automatic prompt logging");
             tr.innerHTML = `
                 <td><input type="checkbox" class="log-checkbox" data-id="${l.id}"></td>
-                <td class="font-mono">${new Date(l.timestamp).toLocaleString("nl-NL")}</td>
+                <td class="font-mono">${new Date(l.timestamp).toLocaleString("en-GB")}</td>
                 <td><span class="badge badge-${l.model}">${l.model === "claude" ? "Claude Pro" : (l.model === "chatgpt" ? "ChatGPT" : "Gemini")}</span></td>
                 <td>${noteText}</td>
-                <td class="font-mono">${l.model === "claude" ? `${formatNumber(l.tokens)} tokens` : "1 bericht"}</td>
+                <td class="font-mono">${l.model === "claude" ? `${formatNumber(l.tokens)} tokens` : "1 message"}</td>
                 <td>
                     <button class="btn-text text-red btn-delete-single-log" data-id="${l.id}">
                         <i class="fa-solid fa-trash-can"></i>
@@ -1080,7 +1080,7 @@ function renderAnalyticsChart() {
     for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(now.getDate() - i);
-        days.push(d.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric" }));
+        days.push(d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" }));
         
         // Get start and end of that day
         const start = new Date(d.setHours(0, 0, 0, 0)).getTime();
@@ -1185,26 +1185,26 @@ function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
     const cAvg = document.getElementById("stats-avg-claude");
     if (cTotal && cAvg) {
         cTotal.innerText = formatNumber(totalClaudeTokens) + " t";
-        cAvg.innerText = `Gem. ${formatNumber(avgClaude)} t / dag`;
+        cAvg.innerText = `Avg. ${formatNumber(avgClaude)} t / day`;
     }
 
     const gptTotal = document.getElementById("stats-total-chatgpt");
     const gptAvg = document.getElementById("stats-avg-chatgpt");
     if (gptTotal && gptAvg) {
         gptTotal.innerText = totalChatGPTPrompts + " p";
-        gptAvg.innerText = `Gem. ${avgChatGPT} / dag`;
+        gptAvg.innerText = `Avg. ${avgChatGPT} / day`;
     }
 
     const gemTotal = document.getElementById("stats-total-gemini");
     const gemAvg = document.getElementById("stats-avg-gemini");
     if (gemTotal && gemAvg) {
         gemTotal.innerText = totalGeminiPrompts + " p";
-        gemAvg.innerText = `Gem. ${avgGemini} / dag`;
+        gemAvg.innerText = `Avg. ${avgGemini} / day`;
     }
 
     // Peak day calculation
     let maxLogs = 0;
-    let peakDayLabel = "Geen data";
+    let peakDayLabel = "No data";
     for (let i = 0; i < 7; i++) {
         const count = claudeCounts[i] + chatgptData[i] + geminiData[i];
         if (count > maxLogs) {
@@ -1217,7 +1217,7 @@ function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
     const peakVal = document.getElementById("stats-peak-value");
     if (peakDay && peakVal) {
         peakDay.innerText = peakDayLabel;
-        peakVal.innerText = maxLogs > 0 ? `${maxLogs} activiteit(en)` : "0 activiteit(en)";
+        peakVal.innerText = maxLogs > 0 ? `${maxLogs} activities` : "0 activities";
     }
 }
 
@@ -1298,7 +1298,7 @@ function setupEventListeners() {
         if (!username || !password) {
             authMsg.style.display = "block";
             authMsg.className = "auth-message error";
-            authMsg.innerText = "Vul een gebruikersnaam en wachtwoord in.";
+            authMsg.innerText = "Enter a username and password.";
             return;
         }
 
@@ -1321,7 +1321,7 @@ function setupEventListeners() {
             } else {
                 authMsg.style.display = "block";
                 authMsg.className = "auth-message error";
-                authMsg.innerText = "Ongeldige gebruikersnaam of wachtwoord.";
+                authMsg.innerText = "Invalid username or password.";
             }
         });
     });
@@ -1333,7 +1333,7 @@ function setupEventListeners() {
         if (!username || password.length < 4) {
             authMsg.style.display = "block";
             authMsg.className = "auth-message error";
-            authMsg.innerText = "Gebruikersnaam verplicht. Wachtwoord minimaal 4 tekens.";
+            authMsg.innerText = "Username required. Password at least 4 characters.";
             return;
         }
         
@@ -1344,7 +1344,7 @@ function setupEventListeners() {
             if (users[username]) {
                 authMsg.style.display = "block";
                 authMsg.className = "auth-message error";
-                authMsg.innerText = "Gebruikersnaam is al bezet.";
+                authMsg.innerText = "Username is already taken.";
             } else {
                 users[username] = createDefaultUserProfile(passHash);
                 DB.set({ lt_users: users }, () => {
@@ -1396,7 +1396,7 @@ function setupEventListeners() {
         btnSubmitPairing.addEventListener("click", () => {
             const urlVal = document.getElementById("pairing-input-url").value.trim();
             if (!urlVal) {
-                alert("Voer a.u.b. een geldige koppel-URL in.");
+                alert("Please enter a valid pairing URL.");
                 return;
             }
             try {
@@ -1424,15 +1424,15 @@ function setupEventListeners() {
                     localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
                     CookieStorage.set("lt_sync_client_config", config);
                     
-                    showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Koppelgegevens succesvol opgeslagen!`);
+                    showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Pairing details saved successfully!`);
                     setTimeout(() => {
                         window.location.reload();
                     }, 1200);
                 } else {
-                    alert("De ingevoerde URL is ongeldig. Zorg ervoor dat 'key' en 'bin' in de parameters staan.");
+                    alert("The entered URL is invalid. Make sure 'key' and 'bin' are in the parameters.");
                 }
             } catch (err) {
-                alert("Ongeldige invoer. Plak de volledige URL die op de desktop wordt weergegeven.");
+                alert("Invalid input. Paste the full URL shown on the desktop.");
             }
         });
     }
@@ -1444,7 +1444,7 @@ function setupEventListeners() {
 
     // H. Clear Recent list
     document.getElementById("btn-clear-recent").addEventListener("click", () => {
-        if (confirm("Weet je zeker dat je alle logs in het dashboard wilt wissen? (Historie blijft behouden in Analyse tabblad)")) {
+        if (confirm("Are you sure you want to clear all logs in the dashboard? (History is kept in the Analyze tab)")) {
             state.userLogs = [];
             // Clear synced scraper statuses as well to align
             state.syncStatus = { claude: null, chatgpt: null };
@@ -1480,7 +1480,7 @@ function setupEventListeners() {
     document.getElementById("btn-delete-selected").addEventListener("click", () => {
         const selectedIds = Array.from(document.querySelectorAll(".log-checkbox:checked")).map(cb => cb.getAttribute("data-id"));
         if (selectedIds.length > 0) {
-            if (confirm(`Weet je zeker dat je deze ${selectedIds.length} logs wilt verwijderen?`)) {
+            if (confirm(`Are you sure you want to delete these ${selectedIds.length} logs?`)) {
                 state.userLogs = state.userLogs.filter(l => !selectedIds.includes(l.id));
                 saveUserData(() => {
                     updateUI();
@@ -1507,7 +1507,7 @@ function setupEventListeners() {
         state.userSettings.gemini.windowHours = parseInt(document.getElementById("limit-gemini-hours").value);
         
         saveUserData(() => {
-            alert("Limieten succesvol opgeslagen!");
+            alert("Limits saved successfully!");
             updateUI();
         });
     });
@@ -1543,20 +1543,20 @@ function setupEventListeners() {
                     
                     saveUserData(() => {
                         updateUI();
-                        alert("Gegevens succesvol geïmporteerd!");
+                        alert("Data imported successfully!");
                     });
                 } else {
-                    alert("Ongeldig bestandsformaat. Kan back-up niet laden.");
+                    alert("Invalid file format. Could not load backup.");
                 }
             } catch (err) {
-                alert("Fout bij het lezen van het JSON-bestand.");
+                alert("Error reading the JSON file.");
             }
         };
         reader.readAsText(file);
     });
 
     document.getElementById("btn-clear-all").addEventListener("click", () => {
-        if (confirm("LET OP: Dit wist permanent AL je profielgegevens, logs, instellingen en threads. Weet je dit absoluut zeker?")) {
+        if (confirm("WARNING: This permanently erases ALL your profile data, logs, settings and threads. Are you absolutely sure?")) {
             state.userLogs = [];
             state.userThreads = [];
             state.syncStatus = { claude: null, chatgpt: null };
@@ -1567,7 +1567,7 @@ function setupEventListeners() {
             };
             saveUserData(() => {
                 updateUI();
-                alert("Alle gegevens zijn gewist.");
+                alert("All data has been cleared.");
             });
         }
     });
@@ -1618,7 +1618,7 @@ function setupEventListeners() {
                     loadCloudUserData(false);
                 } else {
                     console.log("Auto-refreshing usage limits upon tab focus...");
-                    showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Auto-refresh geactiveerd...`);
+                    showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Auto-refresh activated...`);
                     triggerSyncNow("claude");
                     setTimeout(() => triggerSyncNow("chatgpt"), 1000);
                 }
@@ -1642,7 +1642,7 @@ function setupEventListeners() {
         btnCopyKey.addEventListener("click", () => {
             const pairingKey = document.getElementById("sync-pairing-key").value;
             navigator.clipboard.writeText(pairingKey).then(() => {
-                showToast(`<i class="fa-solid fa-copy"></i> Koppelcode gekopieerd!`);
+                showToast(`<i class="fa-solid fa-copy"></i> Pairing code copied!`);
             });
         });
     }
@@ -1656,7 +1656,7 @@ function setupEventListeners() {
             let host = (input.value || "").trim().replace(/\/+$/, "");
             if (host && !/^https?:\/\//i.test(host)) host = "https://" + host;
             DB.set({ lt_pwa_host: host || DEFAULT_PWA_HOST }, () => {
-                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> PWA-host opgeslagen.`);
+                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> PWA host saved.`);
                 renderMobileSyncSettings();
             });
         });
@@ -1665,11 +1665,11 @@ function setupEventListeners() {
     // Placeholder tabs (MV3 CSP staat geen inline onclick toe)
     const btnReports = document.getElementById("btn-tab-reports");
     if (btnReports) {
-        btnReports.addEventListener("click", () => alert("Rapporten zijn binnenkort beschikbaar!"));
+        btnReports.addEventListener("click", () => alert("Reports are coming soon!"));
     }
     const btnHelp = document.getElementById("btn-tab-help");
     if (btnHelp) {
-        btnHelp.addEventListener("click", () => alert("Help & Support is binnenkort beschikbaar!"));
+        btnHelp.addEventListener("click", () => alert("Help & Support is coming soon!"));
     }
 
     // Koppel-URL input focus styling (MV3 CSP staat geen inline onfocus/onblur toe)
@@ -1681,7 +1681,7 @@ function setupEventListeners() {
 }
 
 function deleteLog(id) {
-    if (confirm("Weet je zeker dat je deze log wilt verwijderen?")) {
+    if (confirm("Are you sure you want to delete this log?")) {
         state.userLogs = state.userLogs.filter(l => l.id !== id);
         saveUserData(() => {
             updateUI();
@@ -1741,15 +1741,15 @@ function formatWeeklyTimeMs(ms) {
 }
 
 function formatTimeAgo(timestamp) {
-    if (!timestamp) return "nooit";
+    if (!timestamp) return "never";
     const diff = Date.now() - timestamp;
     const secs = Math.floor(diff / 1000);
-    if (secs < 60) return "zojuist";
+    if (secs < 60) return "just now";
     const mins = Math.floor(secs / 60);
-    if (mins < 60) return `${mins}m geleden`;
+    if (mins < 60) return `${mins}m ago`;
     const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}u geleden`;
-    return new Date(timestamp).toLocaleDateString("nl-NL");
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(timestamp).toLocaleDateString("en-GB");
 }
 
 function triggerSyncNow(provider) {
@@ -1766,26 +1766,26 @@ function triggerSyncNow(provider) {
             const existingTab = tabs.find(t => t.url && t.url.includes(provider === "claude" ? "settings/usage" : "analytics"));
             
             if (existingTab) {
-                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Tab gevonden! Pagina wordt op achtergrond herladen...`);
+                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Tab found! Reloading the page in the background...`);
                 // Stille reload zonder de gebruiker naar de tab te forceren
                 chrome.tabs.reload(existingTab.id, {}, () => {
                     // Reload triggered
                 });
             } else {
-                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Geen actieve tab gevonden. Tijdelijke achtergrondtab wordt geopend...`);
+                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> No active tab found. Opening a temporary background tab...`);
                 // Achtergrond-tab: gebruiker blijft op huidige scherm
                 chrome.tabs.create({ url: url, active: false }, (newTab) => {
                     // Iets langere wachttijd, want background tabs laden trager
                     setTimeout(() => {
                         chrome.tabs.remove(newTab.id);
-                        showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Synchronisatie voltooid!`);
+                        showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Sync complete!`);
                     }, 8500);
                 });
             }
         });
     } else {
         // Fallback for standalone web debugging
-        showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-yellow);"></i> Extensie API niet beschikbaar.`);
+        showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-yellow);"></i> Extension API not available.`);
     }
 }
 
@@ -1935,7 +1935,7 @@ function loadCloudUserData(isManual = false) {
     if (retryTimeoutId) clearTimeout(retryTimeoutId);
     
     if (isManual) {
-        showToast(`<i class="fa-solid fa-cloud-arrow-down fa-spin"></i> Gegevens verversen...`);
+        showToast(`<i class="fa-solid fa-cloud-arrow-down fa-spin"></i> Refreshing data...`);
     }
     
     // Toon spinner-animaties op verversknoppen
@@ -1980,7 +1980,7 @@ function loadCloudUserData(isManual = false) {
             }
             
             if (isManual) {
-                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Gegevens gesynchroniseerd!`);
+                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced!`);
             }
         })
         .catch(err => {
@@ -1999,7 +1999,7 @@ function loadCloudUserData(isManual = false) {
             updateMobileSyncIndicator(false);
             
             if (isManual) {
-                showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync mislukt: ${err.message || err}`);
+                showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: ${err.message || err}`);
             }
             
             // Start retry met exponential backoff
@@ -2031,12 +2031,12 @@ function requestRemoteRefresh() {
     // (de "Ververs"- en "Sync"-knoppen doen hetzelfde — dubbel klikken
     // overbelaadt anders de relay en veroorzaakt "geen gecodeerde data").
     if (remoteRefreshInFlight) {
-        showToast(`<i class="fa-solid fa-hourglass-half"></i> Synchronisatie loopt al…`);
+        showToast(`<i class="fa-solid fa-hourglass-half"></i> Sync already in progress…`);
         return;
     }
     remoteRefreshInFlight = true;
 
-    showToast(`<i class="fa-solid fa-signal fa-fade"></i> PC-synchronisatie op afstand aanvragen...`);
+    showToast(`<i class="fa-solid fa-signal fa-fade"></i> Requesting remote PC sync...`);
 
     // 1. Fetch current cloud data first
     syncRelay(syncClient).read(syncClient.binId)
@@ -2082,9 +2082,9 @@ function requestRemoteRefresh() {
                     console.warn("[USAGE DASHBOARD Phone] Verificatie decrypt-fout:", e);
                 }
                 if (!verified) {
-                    showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> POST verzonden maar bin toont nog geen update. PC krijgt verzoek mogelijk pas met vertraging.`);
+                    showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Request sent, but the bin doesn't show an update yet. The PC may receive the request with a delay.`);
                 } else {
-                    showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC-scrapers geactiveerd op afstand! Scrapen loopt...`);
+                    showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC scrapers triggered remotely! Scraping in progress...`);
                 }
                 // 5b. Start fast polling ongeacht verificatie
                 remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
@@ -2094,7 +2094,7 @@ function requestRemoteRefresh() {
     .catch(err => {
         remoteRefreshInFlight = false;
         console.error("[USAGE DASHBOARD Remote Scrape] Failed:", err);
-        showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Afstands-trigger mislukt.`);
+        showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Remote trigger failed.`);
     });
 }
 
@@ -2134,7 +2134,7 @@ function startFastPollingForRemoteSync(baseline) {
                 const icon = btnMobRefresh.querySelector("i");
                 if (icon) icon.classList.remove("fa-spin");
             }
-            showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Scraper reageert niet. Staat Chrome op uw PC open?`);
+            showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Scraper not responding. Is Chrome open on your PC?`);
             return;
         }
 
@@ -2175,7 +2175,7 @@ function startFastPollingForRemoteSync(baseline) {
                     if (icon) icon.classList.remove("fa-spin");
                 }
 
-                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Gegevens live gesynchroniseerd vanaf uw PC!`);
+                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced live from your PC!`);
             }
         })
         .catch(err => console.warn("[Remote Poll Wait] error:", err));
@@ -2189,7 +2189,7 @@ function updateMobileSyncIndicator(isSuccess) {
     const pulseDot = liveSyncHeader ? liveSyncHeader.querySelector(".pulse-dot") : null;
     const textSpan = liveSyncHeader ? liveSyncHeader.querySelector("span:not(.pulse-dot)") : null;
     
-    const formattedTime = lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString("nl-NL", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "nooit";
+    const formattedTime = lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "never";
     
     if (isSuccess) {
         if (liveSyncHeader) {
@@ -2203,21 +2203,21 @@ function updateMobileSyncIndicator(isSuccess) {
             }
         }
         if (statusDesc) {
-            statusDesc.innerHTML = `Dit dashboard is live gekoppeld aan de desktop extensie.<br><strong style="color: var(--accent-green); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-check"></i> Laatste succesvolle sync: ${formattedTime}</strong>`;
+            statusDesc.innerHTML = `This dashboard is linked live to the desktop extension.<br><strong style="color: var(--accent-green); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-check"></i> Last successful sync: ${formattedTime}</strong>`;
         }
     } else {
         if (liveSyncHeader) {
             liveSyncHeader.style.background = "rgba(239, 68, 68, 0.08)";
             liveSyncHeader.style.borderColor = "rgba(239, 68, 68, 0.26)";
             liveSyncHeader.style.color = "var(--accent-red)";
-            if (textSpan) textSpan.innerText = "Sync Mislukt";
+            if (textSpan) textSpan.innerText = "Sync Failed";
             if (pulseDot) {
                 pulseDot.style.backgroundColor = "var(--accent-red)";
                 pulseDot.style.boxShadow = "0 0 6px var(--accent-red)";
             }
         }
         if (statusDesc) {
-            statusDesc.innerHTML = `Dit dashboard is live gekoppeld aan de desktop extensie.<br><strong style="color: var(--accent-red); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-exclamation"></i> Synchronisatie mislukt (retry actief). Laatste sync: ${formattedTime}</strong>`;
+            statusDesc.innerHTML = `This dashboard is linked live to the desktop extension.<br><strong style="color: var(--accent-red); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-exclamation"></i> Sync failed (retry active). Last sync: ${formattedTime}</strong>`;
         }
     }
 }
@@ -2227,7 +2227,7 @@ function logSync(message) {
     if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
         chrome.storage.local.get(["lt_sync_logs"], (res) => {
             const logs = res.lt_sync_logs || [];
-            const timeStr = new Date().toLocaleTimeString("nl-NL");
+            const timeStr = new Date().toLocaleTimeString("en-GB");
             logs.unshift(`[${timeStr}] ${message}`);
             if (logs.length > 50) logs.pop();
             chrome.storage.local.set({ lt_sync_logs: logs });
@@ -2286,7 +2286,7 @@ function renderMobileSyncSettings() {
 
         if (config && config.enabled) {
             connectionStatus.className = "badge badge-success";
-            connectionStatus.innerHTML = `<i class="fa-solid fa-cloud"></i> Actief`;
+            connectionStatus.innerHTML = `<i class="fa-solid fa-cloud"></i> Active`;
             setupActions.style.display = "none";
             activeInfo.style.display = "block";
 
@@ -2307,7 +2307,7 @@ function renderMobileSyncSettings() {
             if (hostInput) hostInput.value = hostUrl;
         } else {
             connectionStatus.className = "badge";
-            connectionStatus.innerText = "Niet Gekoppeld";
+            connectionStatus.innerText = "Not Paired";
             setupActions.style.display = "block";
             activeInfo.style.display = "none";
             pairingKeyInput.value = "";
@@ -2348,7 +2348,7 @@ function generateMobileSync() {
         DB.set({ lt_sync_config: syncConfig }, () => {
             btn.disabled = false;
             btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;
-            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Koppelcode gegenereerd!`);
+            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Pairing code generated!`);
             renderMobileSyncSettings();
         });
     })
@@ -2356,15 +2356,15 @@ function generateMobileSync() {
         console.error("[USAGE DASHBOARD] Genereren sync mislukt:", err);
         btn.disabled = false;
         btn.innerHTML = `<i class="fa-solid fa-key"></i> Genereer Koppelcode`;
-        alert("Kon geen koppelcode genereren. Controleer je internetverbinding en probeer het opnieuw.");
+        alert("Could not generate a pairing code. Check your internet connection and try again.");
     });
 }
 
 // 6. Disable Mobile sync setup
 function disableMobileSync() {
-    if (confirm("Weet je zeker dat je de mobiele synchronisatie wilt uitschakelen? Alle gekoppelde telefoons verliezen direct de toegang.")) {
+    if (confirm("Are you sure you want to disable mobile sync? All paired phones lose access immediately.")) {
         DB.set({ lt_sync_config: null }, () => {
-            showToast(`<i class="fa-solid fa-link-slash"></i> Synchronisatie uitgeschakeld.`);
+            showToast(`<i class="fa-solid fa-link-slash"></i> Sync disabled.`);
             renderMobileSyncSettings();
         });
     }
@@ -2403,15 +2403,15 @@ function applyMobileSyncUI() {
     if (mobSyncPanel) mobSyncPanel.style.display = "none";
     
     const usernameEl = document.getElementById("display-username");
-    if (usernameEl) usernameEl.innerText = "Mobiel";
+    if (usernameEl) usernameEl.innerText = "Mobile";
     
     const logoutBtn = document.getElementById("btn-logout");
     if (logoutBtn) {
-        logoutBtn.innerHTML = `<i class="fa-solid fa-link-slash"></i> Ontkoppelen`;
+        logoutBtn.innerHTML = `<i class="fa-solid fa-link-slash"></i> Unpair`;
         logoutBtn.replaceWith(logoutBtn.cloneNode(true)); // verwijder oude listeners
         document.getElementById("btn-logout").addEventListener("click", (e) => {
             e.preventDefault();
-            if (confirm("Weet je zeker dat je deze mobiele koppeling wilt verbreken?")) {
+            if (confirm("Are you sure you want to unpair this mobile device?")) {
                 localStorage.removeItem("lt_sync_client_config");
                 localStorage.removeItem("lt_users");
                 CookieStorage.remove("lt_sync_client_config");
