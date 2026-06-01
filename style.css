@@ -2227,6 +2227,18 @@ body.auth-view .app-container {
 .profile-tab .ptab-dot {
     width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; display: inline-block;
 }
+.profile-tab .ptab-delete {
+    margin-left: 2px;
+    font-size: 0.85rem;
+    line-height: 1;
+    opacity: 0;
+    color: rgba(255,255,255,0.5);
+    transition: opacity 0.15s, color 0.15s;
+    cursor: pointer;
+    padding: 0 1px;
+}
+.profile-tab:hover .ptab-delete { opacity: 1; }
+.profile-tab .ptab-delete:hover { color: #f87171; }
 .btn-add-profile-tab {
     display: inline-flex; align-items: center; justify-content: center;
     width: 32px; height: 32px; border-radius: 50%;

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.13.2";
+const APP_VERSION = "0.13.3";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2528,21 +2528,36 @@ function renderProfileBar() {
             const active = state.selectedProfileId === id ? "active" : (allIds.length === 1 ? "active" : "");
             let dotColor = stale ? "rgba(255,255,255,0.2)" : (pct === undefined ? "rgba(255,255,255,0.4)" : pct > 50 ? "#4ade80" : pct > 20 ? "#fbbf24" : "#f87171");
             const title = stale ? `${label} — stale (>6h)` : `${label}${isMe ? " (this device)" : ""}`;
+            const deleteBtn = !isMe ? `<span class="ptab-delete" data-del-pid="${id}" title="Remove ${label}" role="button" aria-label="Remove profile">&times;</span>` : "";
             html += `<button class="profile-tab ${active}" data-pid="${id}" title="${title}">
-                <span class="ptab-dot" style="background:${dotColor};"></span>${label}${isMe ? " <i class='fa-solid fa-desktop' style='font-size:0.65rem;opacity:0.6;'></i>" : ""}
+                <span class="ptab-dot" style="background:${dotColor};"></span>${label}${isMe ? " <i class='fa-solid fa-desktop' style='font-size:0.65rem;opacity:0.6;'></i>" : ""}${deleteBtn}
             </button>`;
         });
 
         tabsContainer.innerHTML = html;
 
-        // Click listeners
+        // Click listeners voor tab-selectie
         tabsContainer.querySelectorAll(".profile-tab").forEach(btn => {
-            btn.addEventListener("click", () => {
+            btn.addEventListener("click", (e) => {
+                // Klik op ✕ wordt apart afgehandeld
+                if (e.target.closest(".ptab-delete")) return;
                 const pid = btn.getAttribute("data-pid");
                 state.selectedProfileId = (pid === "all") ? null : pid;
                 renderProfileBar();
                 renderDashboardProgress();
                 updateScraperStatusLabels();
+            });
+        });
+
+        // Click listeners voor verwijder-knop
+        tabsContainer.querySelectorAll(".ptab-delete").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const pid = btn.getAttribute("data-del-pid");
+                const profileLabel = (allProfiles[pid] && allProfiles[pid].label) || pid;
+                if (confirm(`Remove profile "${profileLabel}" from the dashboard?\n\nThis only removes it from the overview — the Chrome profile itself keeps working.`)) {
+                    deleteCloudProfile(pid);
+                }
             });
         });
 
@@ -2618,6 +2633,36 @@ function copyAddProfileInviteLink(successMessage) {
 function closeAddProfilePanel() {
     const panel = document.getElementById("add-profile-panel");
     if (panel) panel.style.display = "none";
+}
+
+function deleteCloudProfile(profileId) {
+    DB.get(["lt_sync_config"], (res) => {
+        const config = res.lt_sync_config;
+        if (!config || !config.enabled || !config.binId || !config.pairingKey) {
+            showToast(`<i class="fa-solid fa-circle-exclamation"></i> No sync configured.`);
+            return;
+        }
+        const relay = syncRelay(config);
+        relay.read(config.binId).then(data => {
+            if (!data || !data.data) return;
+            let cloudDoc = {};
+            try { cloudDoc = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey)); } catch (e) {}
+            if (!cloudDoc.profiles) cloudDoc.profiles = {};
+            const label = (cloudDoc.profiles[profileId] && cloudDoc.profiles[profileId].label) || profileId;
+            delete cloudDoc.profiles[profileId];
+            const encrypted = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+            return relay.write(config.binId, { data: encrypted }).then(() => {
+                // Lokale state bijwerken
+                if (state.cloudProfiles) delete state.cloudProfiles[profileId];
+                if (state.selectedProfileId === profileId) state.selectedProfileId = null;
+                showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile "${label}" removed.`);
+                renderProfileBar();
+                renderDashboardProgress();
+            });
+        }).catch(() => {
+            showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not remove profile — sync error.`);
+        });
+    });
 }
 
 function saveDashboardProfileName() {
