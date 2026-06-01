@@ -2,6 +2,27 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
+**Huidige versie: 0.12.9**
+
+---
+
+## 🚨 "PWA Behind" — wat dit betekent en hoe te handelen
+
+Het dashboard toont een **"PWA Behind"** indicator in de header wanneer de GitHub Pages versie (`dcs-rob.github.io/usage-dashboard`) ouder is dan de actieve extensie-versie.
+
+**Dit is normaal gedrag direct na een `git push`.** GitHub Actions heeft ~1-2 minuten nodig om de Pages workflow te voltooien.
+
+### Wat te doen bij "PWA Behind":
+1. **Wacht 1-2 minuten** na een `git push origin main`
+2. Controleer de deploymentstatus: `https://github.com/DCS-Rob/usage-dashboard/actions`
+3. Als de Pages workflow groen is → refresh het dashboard → indicator toont "PWA Synced"
+
+### Voor Codex / AI-assistenten — VERPLICHT na elke commit:
+Na `git push origin main` **altijd vermelden** in de output:
+> "GitHub Pages deployt nu automatisch. Wacht 1-2 minuten en refresh het dashboard — de 'PWA Behind' indicator verdwijnt zodra de Pages workflow klaar is."
+
+De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub Pages **niet** overeenkomt met de actieve versie in de extensie. Dit is geen bug — het is een bewuste check.
+
 ---
 
 ## ⚠️ VERSIEBEHEER-PROTOCOL — VERPLICHT BIJ ELKE WIJZIGING
@@ -74,17 +95,32 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 
 1. **Chrome Extensie (PC)** — `background.js` + `content.js` + `app.js`
    - Content scripts scrapen claude.ai, chatgpt.com, gemini.google.com
-   - Background service worker verwerkt data en pusht naar npoint.io
-   - Dashboard UI (`index.html`) toont limieten, grafieken, instellingen
+   - Background service worker verwerkt data en pusht naar cloud sync provider
+   - Dashboard UI (`index.html`) toont limieten, grafieken, instellingen, profiel-balk
 
-2. **PWA (Telefoon)** — dezelfde `app.js`/`index.html`/`style.css`, gehost op:
-   - **GitHub Pages (default, publiek)**: `https://dcs-rob.github.io/usage-dashboard/` — werkt op elke telefoon zónder Tailscale. Auto-deploy via `.github/workflows/pages.yml` bij elke push naar `main`.
-   - **agents-controller (optioneel, privé)**: `https://agents-controller.tail00aec2.ts.net:9000` (vereist Tailscale op telefoon). Auto-update via systemd timer: elke 5 minuten `git pull` + service restart.
-   - De host is per gebruiker instelbaar in Instellingen → Mobiele Synchronisatie (opgeslagen onder `lt_pwa_host`); leeg veld = GitHub Pages.
+2. **PWA (Telefoon/web)** — dezelfde `app.js`/`index.html`/`style.css`, gehost op:
+   - **GitHub Pages (default, publiek)**: `https://dcs-rob.github.io/usage-dashboard/` — auto-deploy via `.github/workflows/pages.yml` bij elke push naar `main`. **Deploy duurt ~1-2 minuten.**
+   - **agents-controller (optioneel, privé)**: Tailscale HTTPS poort 9000.
 
-3. **Cloud Sync** — `https://api.npoint.io/<binId>`
-   - Gratis JSON bin, E2E versleuteld via XOR cipher
-   - PC pusht, telefoon pollt elke 25s
+3. **Cloud Sync** — twee providers (keuze bij aanmaken koppeling):
+   - **npoint.io** (default): gratis JSON bin, E2E XOR-versleuteld, werkt overal
+   - **Firebase Realtime Database** (sneller): `usage-dashboard-98f1d`, regio `europe-west1`, Spark free tier. REST API — geen SDK. Database URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
+   - Data-structuur in de bin: `{ profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, logs, settings, refreshRequested }`
+   - Multi-profiel: elk Chrome-profiel pusht onder zijn eigen `profileId` → dashboard aggregeert
+
+### Multi-profiel architectuur (v0.10+)
+
+Elk Chrome-profiel heeft zijn eigen `lt_profile_id` (auto-gegenereerd) en `lt_profile_label` (instelbaar). Meerdere profielen kunnen dezelfde Firebase/npoint bin delen. De dashboard-profiel-balk toont alle actieve profielen, elk met gekleurde status-dot.
+
+**Uitnodigen van een nieuw profiel (v0.12+):**
+1. Profielbeheerder klikt "+" op het dashboard → genereert uitnodigings-URL met `join=1&from=<naam>&key=...&bin=...`
+2. Ontvanger opent de URL in Chrome (met extensie geïnstalleerd)
+3. `background.js` detecteert de `join=1` URL via `chrome.tabs.onUpdated`
+4. Injecteert een accept-overlay via `chrome.scripting.executeScript` (isolated world — geen `world: "MAIN"`)
+5. Na acceptatie: `lt_sync_config`, `lt_profile_id`, `lt_profile_label`, `lt_current_user` worden opgeslagen en het dashboard opent direct
+6. Als extensie **niet** geïnstalleerd is: PWA toont install-assistent met instructies + GitHub link
+
+**`externally_connectable`**: alleen `https://dcs-rob.github.io/*` mag de extensie pingen voor versie/status info (geen sync-data).
 
 ---
 
@@ -168,6 +204,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.12.9** | 2026-06-01 | `try/finally` rondom syncStatus override in `renderDashboardProgress`; 60s periodieke cloud-profiel refresh op desktop. |
 | **0.12.8** | 2026-06-01 | Invite install-assistent kan via veilige `externally_connectable` ping zien of de vaste extensie-ID in dit Chrome-profiel aanwezig is en dan reload-instructies tonen. |
 | **0.12.7** | 2026-06-01 | Invite/install flow verduidelijkt dat unpacked extensions per Chrome-profiel handmatig herladen moeten worden; accept-overlay toont reload-hint bij login fallback. |
 | **0.12.6** | 2026-06-01 | Fix: invite accept in nieuw Chrome-profiel maakt automatisch lokale gebruiker aan en logt direct in, omdat extensie-opslag per profiel gescheiden is. |
