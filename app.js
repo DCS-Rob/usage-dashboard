@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.12.6";
+const APP_VERSION = "0.12.7";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -461,7 +461,7 @@ function showExtensionInviteInstallMessage(inviteUrl) {
             <div class="invite-install-options">
                 <div class="invite-install-option">
                     <strong>Already installed in another Chrome profile?</strong>
-                    <span>Open this Chrome profile's extensions page, enable Developer mode, choose Load unpacked, and select the same Usage Dashboard folder.</span>
+                    <span>Open this Chrome profile's extensions page, enable Developer mode, choose Load unpacked, and select the same Usage Dashboard folder. If it is already loaded, click Reload first so this profile runs the latest invite flow.</span>
                     <button type="button" id="btn-copy-chrome-extensions-url" class="btn-secondary">Copy chrome://extensions</button>
                 </div>
                 <div class="invite-install-option">
@@ -482,7 +482,7 @@ function setupInviteInstallActions(inviteUrl) {
     if (copyExtensionsUrlBtn) {
         copyExtensionsUrlBtn.addEventListener("click", () => {
             navigator.clipboard.writeText("chrome://extensions")
-                .then(() => showToast(`<i class="fa-solid fa-copy"></i> chrome://extensions copied. Paste it in the address bar.`))
+                .then(() => showToast(`<i class="fa-solid fa-copy"></i> chrome://extensions copied. Reload Usage Dashboard in this Chrome profile.`))
                 .catch(() => showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not copy chrome://extensions.`));
         });
     }

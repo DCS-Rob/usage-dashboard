@@ -4,6 +4,15 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.12.7] — 2026-06-01
+
+### Gewijzigd
+- Invite/install flow verduidelijkt dat een unpacked Chrome-extensie **per Chrome-profiel** handmatig herladen moet worden via `chrome://extensions`.
+- Accept-overlay toont nu een hint: als je na accept alsnog op login komt, reload de Usage Dashboard extensie in dat Chrome-profiel en open de invite opnieuw.
+- Service Worker cache en asset querystrings gebumpt naar `0.12.7`.
+
+---
+
 ## [0.12.6] — 2026-06-01
 
 ### Opgelost

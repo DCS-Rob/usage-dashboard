@@ -164,6 +164,10 @@ function showInviteOverlay(invite) {
     text.textContent = `${invite.from || "A dashboard admin"} invited you to share Usage Dashboard data. Your Claude and ChatGPT usage will be added to the combined dashboard.`;
     text.style.cssText = "margin:0 0 18px;color:rgba(226,232,240,.82);font-size:14px;line-height:1.55";
 
+    const reloadHint = document.createElement("p");
+    reloadHint.textContent = "If this profile still asks for a dashboard login after accepting, reload the Usage Dashboard extension in chrome://extensions and open this invite again.";
+    reloadHint.style.cssText = "margin:0 0 18px;color:rgba(245,158,11,.9);font-size:12px;line-height:1.45";
+
     const label = document.createElement("label");
     label.textContent = "Your name for this profile";
     label.style.cssText = "display:block;margin:0 0 6px;color:rgba(226,232,240,.72);font-size:12px";
@@ -218,7 +222,7 @@ function showInviteOverlay(invite) {
     });
 
     actions.append(decline, accept);
-    card.append(title, text, label, input, actions);
+    card.append(title, text, reloadHint, label, input, actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
     input.focus();
