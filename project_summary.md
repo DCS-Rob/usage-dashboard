@@ -6,6 +6,23 @@ Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectu
 
 ---
 
+## 📍 Huidige staat (sessie-handoff)
+
+Recente werk-arc (v0.14 → v0.18), allemaal gepusht en live op GitHub Pages:
+
+- **Dynamisch kaartsysteem** — geen vaste 3 provider-cards meer. In "All profiles" één losse kaart per **(profiel × abonnement)** met volledige pace-balken; bij één profiel de rijke statische kaarten. Provider­kleuren behouden (Claude oranje, ChatGPT groen, Gemini blauw).
+- **Auto-zichtbaarheid** — een kaart verschijnt alleen als dat profiel er data voor heeft; "Add a usage block"-knop opent de inlog/usage-pagina; ✕-knop verwijdert een kaart.
+- **Codex/maandlimiet** — geen apart blok; de maandelijkse limiet valt onder de groene ChatGPT-kaart (gratis/personal = maandelijks, betaald = 5h+weekly).
+- **v0.18.0 (belangrijkst):** data-verlies bug opgelost (app-side upload deed de bin platslaan zonder `profiles`) **én** dashboard-configuratie (blok tonen/verbergen/toevoegen + globale Visible Blocks) synct nu over álle profielen via gedeelde `dashboardConfig` in de bin.
+
+**Geverifieerd** via lokale preview met gestubde sync-provider (config-schrijf behoudt profielen; tweede apparaat ziet toegevoegde/verborgen blokken; extensie-push wist niets meer). **Niet** end-to-end live getest met twee echte Chrome-profielen.
+
+**Actie voor de gebruiker:** herlaad de extensie in **beide** Chrome-profielen (`chrome://extensions` → 🔄) naar v0.18.0 — anders blijft een oud profiel de bin nog platslaan. Daarna: voeg op het ene profiel een blok toe → na ≤60s of een refresh zichtbaar op het andere.
+
+**Open punten (ROADMAP):** drag-to-reorder van kaarten, profielgroepen, analyse-historie. Mogelijke vervolgvraag van de gebruiker: of de Codex-scrape op een **gratis** ChatGPT-account het maandcijfer wel correct van de juiste pagina haalt (afstemmen op screenshot indien nodig).
+
+---
+
 ## 🚨 "PWA Behind" — wat dit betekent en hoe te handelen
 
 Het dashboard toont een **"PWA Behind"** indicator in de header wanneer de GitHub Pages versie (`dcs-rob.github.io/usage-dashboard`) ouder is dan de actieve extensie-versie.
@@ -17,7 +34,7 @@ Het dashboard toont een **"PWA Behind"** indicator in de header wanneer de GitHu
 2. Controleer de deploymentstatus: `https://github.com/DCS-Rob/usage-dashboard/actions`
 3. Als de Pages workflow groen is → refresh het dashboard → indicator toont "PWA Synced"
 
-### Voor Codex / AI-assistenten — VERPLICHT na elke commit:
+### Voor AI-assistenten — VERPLICHT na elke commit:
 Na `git push origin main` **altijd vermelden** in de output:
 > "GitHub Pages deployt nu automatisch. Wacht 1-2 minuten en refresh het dashboard — de 'PWA Behind' indicator verdwijnt zodra de Pages workflow klaar is."
 
@@ -81,13 +98,14 @@ De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub 
 │  │ (background.js +        │   │     │  │ (agents-controller via │  │
 │  │  content.js + app.js)   │   │     │  │  Tailscale HTTPS)      │  │
 │  └──────────┬──────────────┘   │     │  └───────────┬────────────┘  │
-│             │ scrape            │     │              │ poll 25s      │
+│             │ scrape            │     │              │ poll ~2.5s    │
 └─────────────┼───────────────────┘     └──────────────┼───────────────┘
-              │                                         │
+              │ read-modify-write                       │ read (+ config write)
               ▼                                         ▼
          ┌─────────────────────────────────────────────┐
-         │          npoint.io cloud JSON bin           │
-         │      (E2E XOR-encrypted payload)            │
+         │   Gedeelde cloud-bin (E2E XOR-encrypted)    │
+         │   Firebase RTDB (primair) · npoint (fallback)│
+         │   { profiles{}, dashboardConfig, ... }      │
          └─────────────────────────────────────────────┘
 ```
 
@@ -126,7 +144,7 @@ Elk Chrome-profiel heeft zijn eigen `lt_profile_id` (auto-gegenereerd) en `lt_pr
 
 **`externally_connectable`**: alleen `https://dcs-rob.github.io/*` mag de extensie pingen voor versie/status info (geen sync-data).
 
-### Providers & blokken (v0.14–v0.16)
+### Providers & blokken (v0.14–v0.18)
 
 Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 
@@ -157,18 +175,22 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 | `buildSnapshotCard()` + `computeProviderPace()` | Bouwt een card per (profiel × provider) met volledige pace-secties |
 | `parseClaudeSessionTime` / `parseClaudeWeeklyTime` / `parseChatgpt5hTime` / `parseDateResetTime` | Herbruikbare reset-tijd parsers (EN+NL) voor de snapshot-cards |
 | `applyBlockVisibility()` + `hasProviderData()` + `getCurrentProfileContext()` | Auto-zichtbaarheid + verberg-logica voor de statische cards |
-| `isBlockVisible()` (globaal) / `isLocallyHidden()` (per profiel) | Zichtbaarheids-checks |
-| `normalizeUserSettings()` | Back-fill van nieuwe settings-velden (zoals `visibleBlocks`) voor oudere profielen |
+| `pushUserDataToCloud()` | **Read-modify-write** upload van het eigen profiel-slice (behoudt andere profielen + config) |
+| `persistDashboardConfig()` + `getSyncConfigForWrite()` | Read-modify-write van de **gedeelde** `dashboardConfig` (extensie + PWA) |
+| `isBlockVisible()` (=`!isProviderOff`) / `isBlockHidden()` / `isBlockAdded()` | Zichtbaarheids-checks, lezen uit `state.dashboardConfig` |
+| `addBlockToView()` / `removeBlockFromView()` / `clearBlockOverride()` / `setProviderOff()` | Wijzigen van de gedeelde config (optimistisch + persist) |
+| `normalizeDashboardConfig()` + `migrateLocalConfigOnce()` | Config normaliseren + eenmalige migratie van oude `localStorage`-voorkeuren |
+| `normalizeUserSettings()` | Back-fill van settings-velden voor oudere profielen |
 
 ---
 
 ## 2. Remote Refresh Flow (Telefoon → PC)
 
-1. Telefoon drukt op Ververs → `requestRemoteRefresh()` schrijft `refreshRequested: true` naar npoint.io
+1. Telefoon drukt op Ververs → `requestRemoteRefresh()` schrijft `refreshRequested: true` naar de cloud-bin (read-modify-write, behoudt profiles/config)
 2. PC background alarm (`checkForRemoteRefreshRequestBG`, elke 30s) detecteert de vlag
 3. Throttle: max 1 scrape per 90s, opgeslagen in `chrome.storage.local` (overleeft SW-restarts)
 4. Scrapers starten op achtergrond (`triggerScrapeFromBackground`, `active: false` — geen schermwissel)
-5. Background.js pusht verse data + `refreshRequested: false` naar npoint.io
+5. Background.js pusht verse data + `refreshRequested: false` naar de cloud-bin
 6. Telefoon fast-poll (2.5s interval, max 90s) detecteert nieuwere `lastSynced` → UI update
 
 > **Let op:** Er is maar **één** poller — de background alarm. De dashboard-poller die vroeger in `app.js` zat is verwijderd omdat die dubbele scrape-triggers veroorzaakte.
@@ -187,8 +209,7 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 | `style.css` | CSS | Glassmorphism UI, animaties, responsive |
 | `sw.js` | Service Worker | PWA cache (stale-while-revalidate) |
 | `manifest.webmanifest` | PWA manifest | Installeerbaar als app op telefoon |
-| `lib/chart.min.js` | Bibliotheek | Chart.js lokaal gebundeld (CDN geblokkeerd door MV3) |
-| `lib/qrcode.min.js` | Bibliotheek | Lokale QR-code generatie voor mobiele pairing (geen externe QR-provider) |
+| `lib/chart.min.js` | Bibliotheek | Chart.js lokaal gebundeld (CDN geblokkeerd door MV3) — enige lib in `lib/` |
 | `bump-version.ps1` | Script | Werkt alle versienummers bij in één keer |
 | `CHANGELOG.md` | Documentatie | Versiegeschiedenis |
 | `.github/workflows/release.yml` | CI/CD | Maakt automatisch GitHub Release bij tag push |
