@@ -4,10 +4,11 @@ Forward-looking plan. Bevat visie, het kerninzicht dat de architectuur bepaalt,
 haalbaarheid (wat wel/niet kan), de gekozen richting en een gefaseerde uitwerking.
 Dit document is leidend voor de grote update; details kunnen per fase bijgesteld worden.
 
-> **Stand van zaken (v0.16.0):** Fase 1 is grotendeels gerealiseerd — Firebase-fundament,
+> **Stand van zaken (v0.18.0):** Fase 1 is grotendeels gerealiseerd — Firebase-fundament,
 > multi-account via Chrome-profielen, profiel toevoegen/hernoemen/verwijderen, kaart per
-> (profiel × abonnement), blokken tonen/verbergen (globaal + per profiel) en Codex als
-> eigen blok. Nog open binnen Fase 1: drag-to-reorder van kaarten en profielgroepen.
+> (profiel × abonnement), blokken tonen/verbergen (globaal + per profiel, gesynct via gedeelde
+> `dashboardConfig`). Codex/maandlimiet valt onder ChatGPT (groen), geen apart blok.
+> Nog open binnen Fase 1: drag-to-reorder van kaarten en profielgroepen.
 > Fase 2 (PWA als primaire viewer + team-delen) is deels live via GitHub Pages + invite-flow.
 
 ---
@@ -124,4 +125,4 @@ Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 
 ---
 
-*Status (v0.16.0): Fase 1 grotendeels af, Fase 2 deels live. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3).*
+*Status (v0.18.0): Fase 1 grotendeels af, Fase 2 deels live. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3).*
