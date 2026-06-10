@@ -461,7 +461,21 @@ function scrapeClaudeUsage() {
 
     if (pctCurrentSession !== null || pctWeekly !== null) {
         const account = detectClaudeAccount();
-        logSync(`[Scraper] Claude data succesvol uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, Account="${account}"`);
+
+        // Bereken de absolute reset-eindtijd zodat de timer op elk apparaat exact klopt,
+        // ongeacht hoe lang geleden de data gescraped werd.
+        let resetSessionAbsoluteTs = null;
+        if (resetCurrentSessionText) {
+            const rs = resetCurrentSessionText.replace(/^(?:resets?|herstelt)\s+in\s+/i, "").trim();
+            const hMatch = rs.match(/(\d+)\s*(?:hr|h|uur|u)/i);
+            const mMatch = rs.match(/(\d+)\s*(?:min|m)/i);
+            let totalMs = 0;
+            if (hMatch) totalMs += parseInt(hMatch[1]) * 3600000;
+            if (mMatch) totalMs += parseInt(mMatch[1]) * 60000;
+            if (totalMs > 0) resetSessionAbsoluteTs = Date.now() + totalMs;
+        }
+
+        logSync(`[Scraper] Claude data uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, ResetAbsoluteTs=${resetSessionAbsoluteTs}, Account="${account}"`);
 
         safeSendMessage({
             type: "SYNC_FROM_TAB",
@@ -470,6 +484,7 @@ function scrapeClaudeUsage() {
                 pctRemaining: pctCurrentSession !== null ? pctCurrentSession : 100,
                 pctRemainingWeekly: pctWeekly,
                 resetSession: resetCurrentSessionText,
+                resetSessionAbsoluteTs: resetSessionAbsoluteTs || undefined,
                 resetWeekly: resetWeeklyText,
                 tokensUsed: pctCurrentSession !== null ? Math.round(((100 - pctCurrentSession) / 100) * 200000) : 0,
                 account: account || undefined,

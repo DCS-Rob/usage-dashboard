@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.21.0";
+const APP_VERSION = "0.21.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -1092,7 +1092,7 @@ function renderDashboardProgress() {
     if (state.syncStatus.claude && state.syncStatus.claude.resetSession) {
         const _sync    = state.syncStatus.claude;
         const _elapsed = _sync.lastSynced ? Math.max(0, now - _sync.lastSynced) : 0;
-        const _s       = parseClaudeSessionTime(_sync.resetSession, claudeWindowMs, _elapsed);
+        const _s       = parseClaudeSessionTime(_sync.resetSession, claudeWindowMs, _elapsed, _sync.resetSessionAbsoluteTs || null);
         timerText    = _s.timerText;
         claudeTimePct = _s.timePct;
     } else {
@@ -3072,8 +3072,25 @@ function paceSectionHTML(title, cls, capPct, timePct, resetLabel) {
 
 // Claude lopende sessie: relatief "Xh Ym" → timePct t.o.v. window.
 // elapsedMs: verstreken tijd (ms) since scrape — trekt af zodat weergave live klopt.
-function parseClaudeSessionTime(resetSession, windowMs, elapsedMs = 0) {
+function parseClaudeSessionTime(resetSession, windowMs, elapsedMs = 0, resetSessionAbsoluteTs = null) {
     let timePct = 0, timerText = "Fully Free";
+    const now = Date.now();
+
+    // Absolute timestamp beschikbaar (opgeslagen in content.js bij scrape-tijd) → gebruik direct.
+    if (resetSessionAbsoluteTs) {
+        const adjustedMs = Math.max(0, resetSessionAbsoluteTs - now);
+        if (adjustedMs === 0) {
+            timerText = "Resetting…";
+        } else {
+            const h = Math.floor(adjustedMs / 3600000);
+            const m = Math.floor((adjustedMs % 3600000) / 60000);
+            timerText = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        }
+        timePct = Math.min(100, (adjustedMs / windowMs) * 100);
+        return { timePct, timerText };
+    }
+
+    // Fallback: relatieve string + elapsed-correctie (voor data zonder absolute ts).
     if (resetSession) {
         const rs = resetSession.replace(/^(?:resets?|herstelt)\s+in\s+/i, "").trim();
         const hMatch = rs.match(/(\d+)\s*(?:hr|h|uur|u)/i);
@@ -3092,7 +3109,7 @@ function parseClaudeSessionTime(resetSession, windowMs, elapsedMs = 0) {
             }
             timePct = Math.min(100, (adjustedMs / windowMs) * 100);
         } else {
-            timerText = rs || timerText; // kan niet parsen (bijv. "Resetting...") — as-is
+            timerText = rs || timerText;
         }
     }
     return { timePct, timerText };
@@ -3177,7 +3194,7 @@ function computeProviderPace(provider, sync, now, monthlySync) {
     if (provider === "claude") {
         const windowMs  = (state.userSettings.claude.windowHours || 5) * 3600000;
         const elapsed   = sync.lastSynced ? Math.max(0, now - sync.lastSynced) : 0;
-        const s = parseClaudeSessionTime(sync.resetSession, windowMs, elapsed);
+        const s = parseClaudeSessionTime(sync.resetSession, windowMs, elapsed, sync.resetSessionAbsoluteTs || null);
         const w = parseClaudeWeeklyTime(sync.resetWeekly, now);
         sections.push({ title: "Current Session (Pace)", capPct: sync.pctRemaining, timePct: s.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(s.timerText)}</span>` });
         sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: w.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(w.timerText)}</span>` });
@@ -3225,7 +3242,7 @@ function buildSnapshotCard(provider, profile) {
     const r = 60, circ = 2 * Math.PI * r;
     const offset = circ - (pctNum / 100) * circ;
     const onlineSt    = profileOnlineStatus(profile.lastSeen);
-    const lastSeen    = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+    const lastSynced  = sync.lastSynced ? formatTimeAgo(sync.lastSynced) : "—";
     const customLabel = getBlockLabel(profile.id, provider);
     const displayLabel = customLabel || profile.label || "";
     const accountLine = sync.account
@@ -3272,7 +3289,7 @@ function buildSnapshotCard(provider, profile) {
             </div>
         </div>
         <div class="card-stats">
-            <div class="sync-status-indicator mb-2"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${onlineSt.color};margin-right:5px;flex-shrink:0;"></span><span>${profile.isMe ? "Tab sync" : "Last seen"}: ${lastSeen}</span></div>
+            <div class="sync-status-indicator mb-2"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${onlineSt.color};margin-right:5px;flex-shrink:0;"></span><span>${profile.isMe ? "Tab sync" : "Last seen"}: ${lastSynced}</span></div>
             ${errorInfo}
             ${sectionsHTML}
         </div>

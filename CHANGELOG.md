@@ -4,6 +4,23 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.21.1] — 2026-06-10
+
+### Bugfix — Reset-timer en "Tab sync" correct gemaakt bij de bron
+
+**Bug A — Reset-timer klopte niet (echte fix):**
+`v0.20.1` paste een client-side elapsed-correctie toe als workaround. De werkelijke oorzaak: `resetSession` is een relatieve string ("Resets in 52 min") die stale wordt zodra hij gesynchroniseerd is. De echte fix: `content.js` berekent nu direct bij het scrapen `resetSessionAbsoluteTs = Date.now() + totalMs` en stuurt deze absolute eindtijd mee in het sync-payload. `app.js` gebruikt `resetSessionAbsoluteTs` wanneer beschikbaar (`Math.max(0, resetSessionAbsoluteTs - Date.now())`). De elapsed-correctie blijft als fallback voor data zonder absolute ts. De timer klopt nu exact op elk apparaat, ongeacht hoe lang de data al gesynchroniseerd is.
+
+**Bug B — "Tab sync" toonde heartbeat-tijdstip:**
+In "All profiles" en op de telefoon versprong "Tab sync: 1m ago" elke 2–3 minuten zonder dat er nieuwe gebruiksdata was. Oorzaak: `buildSnapshotCard` gebruikte `profile.lastSeen` (de heartbeat-timestamp, geschreven door `background.js` elke ~5 min). Via Firebase SSE triggerde elke heartbeat-write een UI-rerender met een vers uitziend maar misleidend tijdstip. Fix: "Tab sync" toont nu `sync.lastSynced` (het tijdstip van de laatste daadwerkelijke scrape). `profile.lastSeen` wordt alleen nog gebruikt voor de online-statusdot (groen/geel/rood).
+
+### Technisch
+- `content.js`: `scrapeClaudeUsage` berekent `resetSessionAbsoluteTs` uit de gescrapede "Resets in X h Y min"-tekst en stuurt dit als `number` mee in `SYNC_FROM_TAB`.
+- `app.js`: `parseClaudeSessionTime(resetSession, windowMs, elapsedMs, resetSessionAbsoluteTs)` — 4e parameter, gebruikt absolute ts als primair pad.
+- `app.js`: `buildSnapshotCard` — `lastSynced` variabele uit `sync.lastSynced`; HTML-template aangepast.
+
+---
+
 ## [0.21.0] — 2026-06-10
 
 ### Nieuw — Abonnement-labels, account-detectie (Fase 5)
