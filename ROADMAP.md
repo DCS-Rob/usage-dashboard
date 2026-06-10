@@ -35,7 +35,11 @@ en het dashboard toont per account/persoon een kaart.
 
 Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
 
-## 3. Gekozen richting (op basis van beslissingen)
+## 3. Beta-beleid & versienummering
+
+Het project is in **beta** zolang de eigenaar niet expliciet besluit tot publieke vrijgave. Alle versies `0.x.x` zijn intern/beta — functioneel volledig, maar niet officieel vrijgegeven. `v1.0.0` wordt **uitsluitend** getagd op expliciete eigenaarsbeslissing na volledige test en goedkeuring (bv. bij keuze voor Web Store-distributie of brede teamdeling). Nooit automatisch bumpen naar 1.0.0. Zie het versie-schema in `project_summary.md`.
+
+## 4. Gekozen richting (op basis van beslissingen)
 
 | Beslissing | Keuze |
 |---|---|

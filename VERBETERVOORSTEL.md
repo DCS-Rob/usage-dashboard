@@ -146,6 +146,10 @@ dashboard die situatie begeleidt en toont:
 
 ## 7. Prioritering & fasering (voorstel)
 
+> **Beta-beleid:** alle versies `0.x.x` zijn interne/beta-versies. `v1.0.0` is een
+> **bewuste eigenaarskeuze** na volledige test en goedkeuring voor publieke vrijgave —
+> nooit automatisch bumpen. Zie het versie-schema in `project_summary.md`.
+
 | Fase | Versie | Inhoud | Omvang |
 |---|---|---|---|
 | 1 | 0.19.0 | Quick wins betrouwbaarheid: heartbeat + status in PWA (2.1), refresh-claim (2.2), scrape-foutmelding (2.3), throttle 90→30 s (1.C), fast-poll-fallback met melding | klein–middel |
@@ -154,15 +158,18 @@ dashboard die situatie begeleidt en toont:
 | 4 | 0.22.0 | Data & Sync-paneel incl. ontsleutelde data-viewer + export/import (3) | middel |
 | 5 | 0.23.0 | Abonnement-labels + account-detectie + koppel-flow (5.1–5.3) | middel |
 | 6 | 0.24.0 | UI-herindeling: profielen-zijpaneel, header opschonen, "+"-menu (6) | middel |
-| 7 | 1.0.0? | Onboarding-wizard + Web Store unlisted + ONBOARDING.md (4); evt. AES-GCM-migratie (zie hieronder) | middel |
+| 7 | 0.25.0 | Onboarding-wizard + ONBOARDING.md (4); evt. AES-GCM-migratie (zie hieronder) | middel |
+| — | 0.25.x-rc | **Release candidate** — stabiele beta voor eindtest op echte apparaten. Geen manifest-versie; alleen git-tag voor eigen overzicht. | — |
+| **Release** | **1.0.0** | **Uitsluitend op expliciete beslissing eigenaar**: alle fasen getest, geen kritieke bugs, keuze Web Store of brede distributie gemaakt. | eigenaarsbeslissing |
 
 Los van de fasen, meenemen wanneer het pad toch openligt:
 - **AES-GCM i.p.v. XOR**: de WebCrypto-code bestond al in v0.8.0-beta (`secureData`). XOR met de pairing key is geen echte encryptie. Migratie = nieuwe payload-versie met fallback-lezing van XOR.
+- **Chrome Web Store unlisted** (~$5 eenmalig): kan bij fase 7 of los erna — afhankelijk van de release-beslissing.
 - Profielgroepen & drag-to-reorder blijven op de roadmap (combineren met fase 5/6 waar logisch).
 
 ## 8. Werkafspraken voor de uitvoerende sessie (Sonnet 4.6)
 
-1. **Lees eerst `project_summary.md`** — versiebeheer-protocol is verplicht: CHANGELOG → `.\bump-version.ps1 -Version X.Y.Z` → commit + tag + push → extensie handmatig herladen in **alle** Chrome-profielen.
+1. **Lees eerst `project_summary.md`** — versiebeheer-protocol is verplicht: CHANGELOG → `.\bump-version.ps1 -Version X.Y.Z` → commit + tag + push → extensie handmatig herladen in **alle** Chrome-profielen. **Nooit automatisch bumpen naar v1.0.0** — dat is een bewuste eigenaarskeuze na volledige test en goedkeuring.
 2. **Gouden regel blijft:** elke schrijf naar een gedeelde node = read-modify-write (en bij fase 3: ETag-conditional). Nooit een gedeeld document blind overschrijven.
 3. **Eén fase per keer**, elk los getest (Claude_Preview MCP `usage-dashboard-pwa`, sync-provider stubben via `SYNC_PROVIDERS.npoint.read/write`) en los geshipt. Niet vooruitgrijpen op latere fasen.
 4. **Fase 3 (datamodel-split) niet beginnen zonder eerst een migratieplan voor te leggen** — dat is de enige wijziging die bestaande data raakt. Oud formaat moet leesbaar blijven tot alle clients over zijn.

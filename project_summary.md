@@ -76,7 +76,19 @@ De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub 
 |------|---------|---------|
 | **PATCH** `+0.0.1` | Bugfix, kleine UI-tweak | `0.6.3 → 0.6.4` |
 | **MINOR** `+0.1.0` | Nieuwe feature, zichtbare gedragswijziging | `0.6.4 → 0.7.0` |
-| **MAJOR** `+1.0.0` | Breaking change, grote architectuurwijziging | `0.9.x → 1.0.0` |
+| **MAJOR** `+1.0.0` | **Uitsluitend** op expliciete beslissing van de eigenaar na volledige test & goedkeuring voor publieke vrijgave. Nooit automatisch bumpen naar 1.0.0. | `0.25.x → 1.0.0` |
+
+### Beta-beleid — v0.x.x vs v1.0.0
+
+> **Het project is in beta zolang de eigenaar niet expliciet besluit tot publieke vrijgave.**
+
+- Alle versies `0.x.x` zijn **interne/beta-versies**. Functioneel volledig, maar nog niet officieel vrijgegeven.
+- Een `1.0.0`-release is een **bewuste eigenaarskeuze**, geen automatisch gevolg van features. Pas de tag wanneer:
+  1. Alle gewenste fasen zijn opgeleverd én getest op echte apparaten,
+  2. De eigenaar besluit het product publiek of breed te delen (bv. Web Store, teamdistributie),
+  3. Er geen bekende kritieke bugs open staan.
+- Gebruik in de aanloop eventueel een **release candidate**: `0.25.1-rc.1` (geen aparte versie in manifest nodig — rc-tags zijn alleen git-labels voor eigen overzicht).
+- Commit-boodschappen en CHANGELOG vermelden **"beta"** zolang we in de `0.x.x`-reeks zitten.
 
 ### Nooit vergeten
 
