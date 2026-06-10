@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.22.3">
+    <link rel="stylesheet" href="style.css?v=0.22.4">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -176,6 +176,12 @@
                         <div id="profile-switcher-menu" class="profile-switcher-menu" style="display:none;">
                             <div id="psm-profile-list"></div>
                             <div class="psm-divider"></div>
+                            <button id="btn-psm-blocks" class="psm-manage-btn">
+                                <i class="fa-solid fa-plus"></i> Add / restore blocks
+                                <span id="block-fab-hidden-badge" class="block-fab-badge psm-badge" style="display:none;"></span>
+                            </button>
+                            <div id="block-fab-menu" class="block-fab-menu psm-block-menu" style="display:none;"></div>
+                            <div class="psm-divider"></div>
                             <button id="btn-psm-manage" class="psm-manage-btn">
                                 <i class="fa-solid fa-sliders"></i> Manage profiles
                             </button>
@@ -249,16 +255,7 @@
                         </div>
                     </div>
 
-                    <!-- Block FAB: add / restore blocks -->
-                    <div class="block-fab-wrapper">
-                        <button id="btn-block-fab" class="block-fab-btn" title="Add or restore blocks">
-                            <i class="fa-solid fa-plus"></i>
-                            <span id="block-fab-hidden-badge" class="block-fab-badge" style="display:none;"></span>
-                        </button>
-                        <div id="block-fab-menu" class="block-fab-menu" style="display:none;"></div>
-                    </div>
-
-                    <div class="dashboard-grid">
+<div class="dashboard-grid">
 
                         <!-- CLAUDE CARD -->
                         <div class="glass-panel provider-card claude-card" id="card-claude">
@@ -966,6 +963,6 @@
     </aside>
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.22.3"></script>
+    <script src="app.js?v=0.22.4"></script>
 </body>
 </html>

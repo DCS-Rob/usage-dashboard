@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.22.4] — 2026-06-10
+
+### UI — "+" blok-knop verplaatst naar het profiel-dropdown menu
+
+De zwevende "+" knop boven de kaarten-grid is verwijderd. "Add / restore blocks" staat nu als menu-item in het profiel-switcher dropdown in de hoofdbalk — met badge als er verborgen blokken zijn. Het header-label toont bij meerdere profielen simpelweg "All profiles" zonder online-telling.
+
+### Technisch
+- `index.html`: `block-fab-wrapper` verwijderd; `#btn-psm-blocks` + `#block-fab-menu` toegevoegd in `#profile-switcher-menu`.
+- `app.js`: `initBlockFab` bindt aan `#btn-psm-blocks` (geen document-click-sluiter nodig — zit al in dropdown). `updateProfileContextBar` — "online" count verwijderd uit label.
+- `style.css`: `.block-fab-badge` aangepast voor inline gebruik; `.psm-block-menu` toegevoegd voor inline weergave in dropdown.
+
+---
+
 ## [0.22.3] — 2026-06-10
 
 ### UI — Profielindicator verplaatst naar de hoofdbalk

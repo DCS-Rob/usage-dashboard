@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.22.3";
+const APP_VERSION = "0.22.4";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -899,7 +899,7 @@ function renderBlockFabMenu() {
 }
 
 function initBlockFab() {
-    const btn  = document.getElementById("btn-block-fab");
+    const btn  = document.getElementById("btn-psm-blocks");
     const menu = document.getElementById("block-fab-menu");
     if (!btn || !menu) return;
     btn.addEventListener("click", (e) => {
@@ -908,9 +908,6 @@ function initBlockFab() {
         if (open) { menu.style.display = "none"; return; }
         renderBlockFabMenu();
         menu.style.display = "block";
-    });
-    document.addEventListener("click", (e) => {
-        if (!btn.contains(e.target) && !menu.contains(e.target)) menu.style.display = "none";
     });
 }
 
@@ -938,11 +935,9 @@ function updateProfileContextBar() {
     const pid = state.selectedProfileId;
 
     if (!pid || ids.length <= 1) {
-        // "All profiles" of enkel profiel
-        const onlineCount = Object.values(allProfileMap).filter(p => (Date.now() - (p.lastSeen || 0)) < 10 * 60 * 1000).length;
         dot.style.background = "var(--color-gemini)";
         label.textContent = ids.length > 1
-            ? `All profiles (${onlineCount} online)`
+            ? "All profiles"
             : (allProfileMap[ids[0]]?.label || "Dashboard");
     } else {
         const profile = allProfileMap[pid] || {};
