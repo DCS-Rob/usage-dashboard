@@ -4,6 +4,14 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.22.2] — 2026-06-10
+
+### UI — Profielindicator en "+" knop samengevoegd op één regel
+
+De "All profiles"-indicator en de "+" blok-knop staan nu op dezelfde regel boven de kaarten-grid: context links, actieknop rechts. Geen twee aparte regels meer.
+
+---
+
 ## [0.22.1] — 2026-06-10
 
 ### Bugfix / verbetering — Hidden-balk weg, profielindicator toegevoegd

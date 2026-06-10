@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.22.1">
+    <link rel="stylesheet" href="style.css?v=0.22.2">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -239,16 +239,16 @@
                         </div>
                     </div>
 
-                    <!-- Actief profiel indicator -->
-                    <div id="profile-context-bar" class="profile-context-bar" style="display:none;"></div>
-
-                    <!-- Block FAB: add / restore blocks -->
-                    <div class="block-fab-wrapper">
-                        <button id="btn-block-fab" class="block-fab-btn" title="Add or restore blocks">
-                            <i class="fa-solid fa-plus"></i>
-                            <span id="block-fab-hidden-badge" class="block-fab-badge" style="display:none;"></span>
-                        </button>
-                        <div id="block-fab-menu" class="block-fab-menu" style="display:none;"></div>
+                    <!-- Profiel-context + block FAB op één regel -->
+                    <div class="profile-fab-row">
+                        <div id="profile-context-bar" class="profile-context-bar" style="display:none;"></div>
+                        <div class="block-fab-wrapper">
+                            <button id="btn-block-fab" class="block-fab-btn" title="Add or restore blocks">
+                                <i class="fa-solid fa-plus"></i>
+                                <span id="block-fab-hidden-badge" class="block-fab-badge" style="display:none;"></span>
+                            </button>
+                            <div id="block-fab-menu" class="block-fab-menu" style="display:none;"></div>
+                        </div>
                     </div>
 
                     <div class="dashboard-grid">
@@ -959,6 +959,6 @@
     </aside>
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.22.1"></script>
+    <script src="app.js?v=0.22.2"></script>
 </body>
 </html>

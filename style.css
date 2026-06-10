@@ -2512,10 +2512,18 @@ body.auth-view .app-container {
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     z-index: 200; padding: 6px;
 }
-/* ── Profiel-context indicatorbalk ──────────────────────────────────── */
+/* ── Profiel-context + FAB op één regel ─────────────────────────────── */
+.profile-fab-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 10px; min-height: 32px;
+}
+.profile-fab-row .block-fab-wrapper {
+    margin-bottom: 0; flex-shrink: 0;
+}
+
 .profile-context-bar {
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 2px; margin-bottom: 4px;
+    padding: 0; margin-bottom: 0;
     font-size: 0.8rem; color: var(--text-muted);
 }
 .profile-context-bar .pcb-dot {
