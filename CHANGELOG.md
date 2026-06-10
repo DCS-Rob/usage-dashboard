@@ -4,6 +4,21 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.20.0] — 2026-06-10
+
+### Verbeterd — Firebase realtime streaming (Fase 2)
+
+- **Firebase SSE-streaming voor de PWA:** de telefoon luistert nu via een `EventSource`-verbinding (Server-Sent Events) naar wijzigingen in de Firebase bin. Data verschijnt < 1 s na een schrijf op de PC, i.p.v. maximaal 25 s wachten op de volgende poll. De 25 s-interval is vervangen door een backup-poll van 5 minuten (vangt netwerk-onderbrekingen op als de stream even hapert).
+- **Firebase SSE-streaming voor het extensie-dashboard:** bij het openen van het dashboard wordt eenmalig een SSE-stream gestart. De 60 s-poll voor `loadCloudProfilesForDesktop` blijft actief als backup (ook voor npoint-gebruikers).
+- **npoint-gebruikers ongewijzigd:** npoint biedt geen streaming; daar blijft de 25 s-poll (PWA) en 60 s-poll (extensie) behouden.
+- **`processRawCloudDoc` helper:** de decryptie + state-update + UI-render-logica is gedeeld tussen poll- en stream-paden. Minder code, één bron van waarheid.
+
+### Technisch
+- `app.js`: `startFirebaseStreaming(config, onDoc)` — `EventSource` op Firebase RTDB; herverbindt automatisch.
+- `app.js`: `processRawCloudDoc(data, syncClient, isManual)` — gedeelde verwerker voor PWA-clouddata.
+- `app.js`: `applyDesktopCloudDoc(doc)` — gedeelde state+UI-update voor de desktopprofielenlaad.
+- Module-vars: `_firebaseStreamPWA`, `_firebaseStreamDesktop`, `_desktopStreamAttempted`.
+
 ## [0.19.0] — 2026-06-10
 
 ### Verbeterd — betrouwbaarheid & transparantie (Fase 1)

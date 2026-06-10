@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.19.0";
+const APP_VERSION = "0.20.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -404,10 +404,26 @@ function initApp() {
         setTimeout(() => { if (!state.syncStatus?.claude) loadCloudUserData(); }, 2000);
         renderProfileBar();
 
-        // Auto-refresh from cloud every 25 seconds
-        setInterval(() => {
-            loadCloudUserData();
-        }, 25000);
+        // Streaming (Firebase) of polling (npoint) voor automatische cloud-updates.
+        // Voor Firebase: SSE-stream geeft pushberichten bij elke wijziging (<1s);
+        // npoint heeft geen streaming-support en blijft pollen elke 25s.
+        const _sseInitCfg = isSyncClient();
+        if (_sseInitCfg) {
+            _firebaseStreamPWA = startFirebaseStreaming(_sseInitCfg, (rawDoc) => {
+                if (rawDoc) {
+                    processRawCloudDoc(rawDoc, _sseInitCfg, false);
+                } else {
+                    loadCloudUserData(false); // patch-event: volledige herlaad
+                }
+            });
+        }
+        if (!_firebaseStreamPWA) {
+            // npoint of streaming mislukt → behoud 25s poll
+            setInterval(() => { loadCloudUserData(); }, 25000);
+        } else {
+            // Firebase streaming actief; trage backup-poll elke 5 minuten
+            setInterval(() => { loadCloudUserData(); }, 5 * 60 * 1000);
+        }
 
         return;
     }
@@ -2605,6 +2621,30 @@ function syncRelay(config) {
     return SYNC_PROVIDERS[resolveSyncProviderId(config)];
 }
 
+// ---- Firebase SSE Streaming (Fase 2) ----
+let _firebaseStreamPWA      = null;
+let _firebaseStreamDesktop  = null;
+let _desktopStreamAttempted = false;
+
+function startFirebaseStreaming(config, onDoc) {
+    if (resolveSyncProviderId(config) !== "firebase") return null;
+    if (!config.binId || !config.pairingKey) return null;
+    const url = `${FIREBASE_DB_URL}/profiles/${config.binId}.json`;
+    const es  = new EventSource(url);
+    es.addEventListener("put", (e) => {
+        try {
+            const msg = JSON.parse(e.data);
+            // msg = { path: "/", data: { data: "<enc>", ... } }
+            if (msg && msg.data) onDoc(msg.data);
+        } catch (err) { console.warn("[SSE Firebase] put parse error:", err); }
+    });
+    es.addEventListener("patch", () => onDoc(null));  // partieel → volledige herlaad
+    es.addEventListener("cancel", () => console.warn("[SSE Firebase] Stream gecanceld"));
+    es.onerror = () => {};  // EventSource herverbindt automatisch
+    console.log("[SSE Firebase] Streaming gestart:", config.binId);
+    return es;
+}
+
 let lastSyncTime = null;
 let retryCount = 0;
 let retryTimeoutId = null;
@@ -3292,27 +3332,42 @@ function renderMultiProfileCards() {
     });
 }
 
+function applyDesktopCloudDoc(doc) {
+    if (doc.profiles && Object.keys(doc.profiles).length > 0) {
+        state.cloudProfiles = doc.profiles;
+    }
+    if (!_dashCfgWriteInFlight && !_dashCfgWriteQueued) {
+        state.dashboardConfig = normalizeDashboardConfig(doc.dashboardConfig);
+    }
+    migrateLocalConfigOnce();
+    renderProfileBar();
+    applyBlockVisibility();
+    renderMultiProfileCards();
+}
+
 function loadCloudProfilesForDesktop() {
     if (isSyncClient()) return; // Alleen desktop
     DB.get(["lt_sync_config"], (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
+
+        // Start Firebase SSE-stream eenmalig op; npoint blijft op 60s poll
+        if (!_desktopStreamAttempted) {
+            _desktopStreamAttempted = true;
+            _firebaseStreamDesktop = startFirebaseStreaming(config, (rawDoc) => {
+                if (!rawDoc) { loadCloudProfilesForDesktop(); return; } // patch → full read
+                try {
+                    applyDesktopCloudDoc(JSON.parse(CryptoSync.decrypt(rawDoc.data, config.pairingKey)));
+                } catch (e) {}
+            });
+        }
+
+        // Altijd ook een directe read: betrouwbare initiële staat + npoint-fallback.
+        // (Voor Firebase is dit ook de backup als de stream een beat mist.)
         syncRelay(config).read(config.binId).then(data => {
             if (!data || !data.data) return;
             try {
-                const doc = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey));
-                if (doc.profiles && Object.keys(doc.profiles).length > 0) {
-                    state.cloudProfiles = doc.profiles;
-                }
-                // Gedeelde dashboard-config van andere profielen overnemen (convergentie ≤60s).
-                // Niet overschrijven terwijl wijzigingen van dit apparaat nog weggeschreven worden.
-                if (!_dashCfgWriteInFlight && !_dashCfgWriteQueued) {
-                    state.dashboardConfig = normalizeDashboardConfig(doc.dashboardConfig);
-                }
-                migrateLocalConfigOnce();
-                renderProfileBar();
-                applyBlockVisibility();
-                renderMultiProfileCards();
+                applyDesktopCloudDoc(JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey)));
             } catch (e) {}
         }).catch(() => {});
     });
@@ -3439,6 +3494,51 @@ function saveDashboardProfileName() {
     });
 }
 
+// Verwerk een volledig (onversleuteld) cloud-document in de PWA-state.
+// Wordt aangeroepen vanuit loadCloudUserData én vanuit de SSE-callback.
+function processRawCloudDoc(data, syncClient, isManual) {
+    const btnSyncAll    = document.getElementById("btn-sync-all");
+    const btnMobRefresh = document.getElementById("btn-mobile-refresh");
+    const stopSpinners  = () => {
+        if (btnSyncAll)    { const i = btnSyncAll.querySelector("i");    if (i) i.classList.remove("fa-spin"); }
+        if (btnMobRefresh) { const i = btnMobRefresh.querySelector("i"); if (i) i.classList.remove("fa-spin"); }
+    };
+    if (!data || !data.data) {
+        stopSpinners();
+        updateMobileSyncIndicator(false);
+        if (isManual) showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: geen data`);
+        return;
+    }
+    try {
+        const decryptedStr  = CryptoSync.decrypt(data.data, syncClient.pairingKey);
+        const decryptedData = JSON.parse(decryptedStr);
+        state.userLogs      = decryptedData.logs    || [];
+        state.userThreads   = decryptedData.threads || [];
+        state.userSettings  = normalizeUserSettings(decryptedData.settings || state.userSettings);
+        state.dashboardConfig = normalizeDashboardConfig(decryptedData.dashboardConfig);
+        migrateLocalConfigOnce();
+        if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
+            state.cloudProfiles = decryptedData.profiles;
+            state.syncStatus    = aggregateProfileSyncStatus(decryptedData.profiles);
+        } else {
+            state.cloudProfiles = {};
+            state.syncStatus    = decryptedData.syncStatus || { claude: null, chatgpt: null };
+        }
+        lastSyncTime = Date.now();
+        retryCount   = 0;
+        updateUI();
+        updateMobileSyncIndicator(true);
+        stopSpinners();
+        if (isManual) showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced!`);
+    } catch (err) {
+        console.error("[Cloud Sync] processRawCloudDoc error:", err);
+        stopSpinners();
+        updateMobileSyncIndicator(false);
+        if (isManual) showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: ${err.message || err}`);
+        triggerSyncRetry();
+    }
+}
+
 // 2. Fetch and Render cloud sync data on Mobile clients
 function loadCloudUserData(isManual = false) {
     const syncClient = isSyncClient();
@@ -3465,68 +3565,15 @@ function loadCloudUserData(isManual = false) {
     }
     
     syncRelay(syncClient).read(syncClient.binId)
-        .then(data => {
-            if (!data || !data.data) throw new Error("Geen gecodeerde data gevonden.");
-
-            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
-            const decryptedData = JSON.parse(decryptedStr);
-
-            state.userLogs = decryptedData.logs || [];
-            state.userThreads = decryptedData.threads || [];
-            state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
-            // Gedeelde dashboard-config uit de bin (zichtbaarheid/toegevoegde blokken)
-            state.dashboardConfig = normalizeDashboardConfig(decryptedData.dashboardConfig);
-            migrateLocalConfigOnce();
-
-            // Multi-profiel: sla alle profielen op en gebruik geaggregeerde syncStatus
-            if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
-                state.cloudProfiles = decryptedData.profiles;
-                state.syncStatus = aggregateProfileSyncStatus(decryptedData.profiles);
-            } else {
-                state.cloudProfiles = {};
-                state.syncStatus = decryptedData.syncStatus || { claude: null, chatgpt: null };
-            }
-            
-            lastSyncTime = Date.now();
-            retryCount = 0; // reset retry teller bij succes
-            
-            updateUI();
-            updateMobileSyncIndicator(true);
-            
-            // Stop spinner-animaties
-            if (btnSyncAll) {
-                const icon = btnSyncAll.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            if (btnMobRefresh) {
-                const icon = btnMobRefresh.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            
-            if (isManual) {
-                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced!`);
-            }
-        })
+        .then(data => { processRawCloudDoc(data, syncClient, isManual); })
         .catch(err => {
             console.error("[USAGE DASHBOARD] Cloud sync error:", err);
-            
-            // Stop spinner-animaties
-            if (btnSyncAll) {
-                const icon = btnSyncAll.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            if (btnMobRefresh) {
-                const icon = btnMobRefresh.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            
+            const btnSyncAll    = document.getElementById("btn-sync-all");
+            const btnMobRefresh = document.getElementById("btn-mobile-refresh");
+            if (btnSyncAll)    { const i = btnSyncAll.querySelector("i");    if (i) i.classList.remove("fa-spin"); }
+            if (btnMobRefresh) { const i = btnMobRefresh.querySelector("i"); if (i) i.classList.remove("fa-spin"); }
             updateMobileSyncIndicator(false);
-            
-            if (isManual) {
-                showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: ${err.message || err}`);
-            }
-            
-            // Start retry met exponential backoff
+            if (isManual) showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: ${err.message || err}`);
             triggerSyncRetry();
         });
 }
