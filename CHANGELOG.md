@@ -4,6 +4,18 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.20.1] — 2026-06-10
+
+### Bugfix — "Resets in" timer liep stale na scrape
+
+**Symptoom:** de "Resets in X min"-waarde klopte niet in de "All profiles"-weergave en op de telefoon. Na een handmatige update sprong de tijd met 30+ minuten, omdat de timer de verstreken tijd na het scrapen niet aftrok.
+
+**Oorzaak:** `resetSession` (bijv. "52 min") werd opgeslagen als relatieve string op het moment van scrapen. Bij weergave werd de verstreken tijd niet gecorrigeerd. In "All profiles" pakt de aggregator het profiel met de laagste pctRemaining — dat kan een ander profiel zijn dan het zojuist gescrapete — waardoor de stale waarde extra afweek.
+
+**Fix:** `parseClaudeSessionTime` krijgt een `elapsedMs`-parameter. Beide aanroepplaatsen (`renderDashboardProgress` en `computeProviderPace` in de snapshot-cards) geven nu `Date.now() - sync.lastSynced` door. De timer wordt altijd gecorrigeerd voor de verstreken tijd, ongeacht wanneer de data werd gescraped.
+
+- Geen datamodel-wijziging; geen impact op de scraping-pipeline of andere fase-plannen.
+
 ## [0.20.0] — 2026-06-10
 
 ### Verbeterd — Firebase realtime streaming (Fase 2)

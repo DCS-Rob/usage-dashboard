@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.20.0";
+const APP_VERSION = "0.20.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -1090,21 +1090,11 @@ function renderDashboardProgress() {
     let timerText = "Fully Free";
     
     if (state.syncStatus.claude && state.syncStatus.claude.resetSession) {
-        let rs = state.syncStatus.claude.resetSession;
-        // Strip prefixes for a clean display
-        rs = rs.replace(/^(?:resets?|herstelt)\s+in\s+/i, "");
-        timerText = rs;
-        
-        // Simple heuristic for time pct relative to max window: extract hours and minutes
-        const hMatch = rs.match(/(\d+)\s*(?:hr|h|uur|u)/i);
-        const mMatch = rs.match(/(\d+)\s*(?:min|m)/i);
-        let totalMs = 0;
-        if (hMatch) totalMs += parseInt(hMatch[1]) * 3600000;
-        if (mMatch) totalMs += parseInt(mMatch[1]) * 60000;
-        
-        if (totalMs > 0) {
-            claudeTimePct = Math.min(100, (totalMs / claudeWindowMs) * 100);
-        }
+        const _sync    = state.syncStatus.claude;
+        const _elapsed = _sync.lastSynced ? Math.max(0, now - _sync.lastSynced) : 0;
+        const _s       = parseClaudeSessionTime(_sync.resetSession, claudeWindowMs, _elapsed);
+        timerText    = _s.timerText;
+        claudeTimePct = _s.timePct;
     } else {
         const claudeLogs = state.userLogs.filter(l => l.model === "claude" && (now - l.timestamp) < claudeWindowMs);
         if (claudeLogs.length > 0) {
@@ -3069,17 +3059,29 @@ function paceSectionHTML(title, cls, capPct, timePct, resetLabel) {
 }
 
 // Claude lopende sessie: relatief "Xh Ym" → timePct t.o.v. window.
-function parseClaudeSessionTime(resetSession, windowMs) {
+// elapsedMs: verstreken tijd (ms) since scrape — trekt af zodat weergave live klopt.
+function parseClaudeSessionTime(resetSession, windowMs, elapsedMs = 0) {
     let timePct = 0, timerText = "Fully Free";
     if (resetSession) {
         const rs = resetSession.replace(/^(?:resets?|herstelt)\s+in\s+/i, "").trim();
-        timerText = rs || timerText;
         const hMatch = rs.match(/(\d+)\s*(?:hr|h|uur|u)/i);
         const mMatch = rs.match(/(\d+)\s*(?:min|m)/i);
         let totalMs = 0;
         if (hMatch) totalMs += parseInt(hMatch[1]) * 3600000;
         if (mMatch) totalMs += parseInt(mMatch[1]) * 60000;
-        if (totalMs > 0) timePct = Math.min(100, (totalMs / windowMs) * 100);
+        if (totalMs > 0) {
+            const adjustedMs = Math.max(0, totalMs - elapsedMs);
+            if (adjustedMs === 0) {
+                timerText = "Resetting…";
+            } else {
+                const h = Math.floor(adjustedMs / 3600000);
+                const m = Math.floor((adjustedMs % 3600000) / 60000);
+                timerText = h > 0 ? `${h}h ${m}m` : `${m}m`;
+            }
+            timePct = Math.min(100, (adjustedMs / windowMs) * 100);
+        } else {
+            timerText = rs || timerText; // kan niet parsen (bijv. "Resetting...") — as-is
+        }
     }
     return { timePct, timerText };
 }
@@ -3161,8 +3163,9 @@ function computeProviderPace(provider, sync, now, monthlySync) {
     const sections = [];
     sync = sync || {};
     if (provider === "claude") {
-        const windowMs = (state.userSettings.claude.windowHours || 5) * 3600000;
-        const s = parseClaudeSessionTime(sync.resetSession, windowMs);
+        const windowMs  = (state.userSettings.claude.windowHours || 5) * 3600000;
+        const elapsed   = sync.lastSynced ? Math.max(0, now - sync.lastSynced) : 0;
+        const s = parseClaudeSessionTime(sync.resetSession, windowMs, elapsed);
         const w = parseClaudeWeeklyTime(sync.resetWeekly, now);
         sections.push({ title: "Current Session (Pace)", capPct: sync.pctRemaining, timePct: s.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(s.timerText)}</span>` });
         sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: w.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(w.timerText)}</span>` });
