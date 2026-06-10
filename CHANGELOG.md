@@ -4,6 +4,20 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.21.0] — 2026-06-10
+
+### Nieuw — Abonnement-labels, account-detectie (Fase 5)
+
+- **Aangepaste labels per kaart:** elke provider-kaart heeft nu een ✎-knop waarmee je een eigen label kunt instellen (bijv. "Kevin — bedrijf" of "Rob Privé"). Het label vervangt de Chrome-profielnaam als weergegeven titel. Labels worden opgeslagen in de gedeelde `dashboardConfig.labels` en zijn dus zichtbaar op alle apparaten (telefoon, andere profielen).
+- **Account-detectie (claude.ai + chatgpt.com):** de scraper probeert bij elke sync het ingelogde e-mailadres of de accountnaam te detecteren in de navigatiebalk. Als dit lukt, wordt het getoond als grijze subtitel onder het label op de kaart. Dit maakt het direct duidelijk welk abonnement achter een kaart zit — ook als meerdere profielen dezelfde provider gebruiken (bijv. 3× ChatGPT van Kevin).
+- **`dashboardConfig.labels`:** nieuw veld in de gedeelde config, naast `blocks` en `providersOff`. Wordt meegeschreven bij elke config-update en gesynchroniseerd via Firebase/npoint.
+
+### Technisch
+- `app.js`: `getBlockLabel(pid, provider)` / `setBlockLabel(pid, provider, label)` helpers.
+- `app.js`: `normalizeDashboardConfig` + `ensureDashboardConfig` + `persistDashboardConfig` uitgebreid met `labels`.
+- `app.js`: `buildSnapshotCard` toont `customLabel || profile.label`, `sync.account` als subtitle, ✎-knop met inline edit (Enter = opslaan, Escape = annuleren, blur = opslaan).
+- `content.js`: `detectClaudeAccount()` + `detectChatGPTAccount()` — probe meerdere CSS-selectors + e-mail-regex fallback op nav/header. Stuurt `account` mee in `SYNC_FROM_TAB` als aanwezig.
+
 ## [0.20.1] — 2026-06-10
 
 ### Bugfix — "Resets in" timer liep stale na scrape

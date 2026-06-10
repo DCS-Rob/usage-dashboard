@@ -460,8 +460,9 @@ function scrapeClaudeUsage() {
     }
 
     if (pctCurrentSession !== null || pctWeekly !== null) {
-        logSync(`[Scraper] Claude data succesvol uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, ResetSessie="${resetCurrentSessionText}", ResetWeek="${resetWeeklyText}"`);
-        
+        const account = detectClaudeAccount();
+        logSync(`[Scraper] Claude data succesvol uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, Account="${account}"`);
+
         safeSendMessage({
             type: "SYNC_FROM_TAB",
             provider: "claude",
@@ -471,6 +472,7 @@ function scrapeClaudeUsage() {
                 resetSession: resetCurrentSessionText,
                 resetWeekly: resetWeeklyText,
                 tokensUsed: pctCurrentSession !== null ? Math.round(((100 - pctCurrentSession) / 100) * 200000) : 0,
+                account: account || undefined,
                 summary: `Gesynchroniseerd: Sessie=${pctCurrentSession}% over, Week=${pctWeekly}% over.`
             }
         });
@@ -641,8 +643,9 @@ function scrapeChatGPTUsage() {
         });
 
         if (pct5h !== null || pctWeekly !== null) {
-            logSync(`[Scraper] ChatGPT data succesvol uitgelezen: 5h=${pct5h}%, 5hReset="${reset5hText}", Weekly=${pctWeekly}%, WeeklyReset="${resetWeeklyText}"`);
-            
+            const account = detectChatGPTAccount();
+            logSync(`[Scraper] ChatGPT data succesvol uitgelezen: 5h=${pct5h}%, Account="${account}"`);
+
             safeSendMessage({
                 type: "SYNC_FROM_TAB",
                 provider: "chatgpt",
@@ -653,6 +656,7 @@ function scrapeChatGPTUsage() {
                     resetWeekly: resetWeeklyText,
                     pctRemaining: pct5h !== null ? pct5h : pctWeekly,
                     messagesUsed: pct5h !== null ? Math.round(((100 - pct5h)/100) * 120) : 0,
+                    account: account || undefined,
                     summary: `Gesynchroniseerd: 5u=${pct5h}% over. ${reset5hText || ""}`
                 }
             });
@@ -730,6 +734,67 @@ function scrapeCodexMonthly() {
         }
     });
     return true;
+}
+
+// Probeert het ingelogde account (e-mail of naam) te detecteren op claude.ai.
+// Geeft null terug als niets gevonden — nooit een fout gooien.
+function detectClaudeAccount() {
+    try {
+        // Meest specifieke selectors eerst; valt terug op e-mail-patroon in nav-tekst
+        const selectors = [
+            '[data-testid="user-menu-trigger"] span',
+            'button[aria-label*="account"] span',
+            'button[aria-label*="profiel"] span',
+            'nav [class*="user"] span',
+            'header [class*="email"]',
+            '[class*="UserMenu"] span',
+            '[class*="user-menu"] span',
+            '[class*="account-menu"] span',
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el) {
+                const text = (el.innerText || el.textContent || "").trim();
+                if (text && text.length < 80 && (text.includes("@") || text.length > 3)) return text;
+            }
+        }
+        // E-mail-patroon scannen in header/nav-tekst
+        const navEl = document.querySelector("nav, header");
+        if (navEl) {
+            const match = (navEl.innerText || "").match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+            if (match) return match[0];
+        }
+    } catch (e) { /* stil */ }
+    return null;
+}
+
+// Probeert het ingelogde account (e-mail of naam) te detecteren op chatgpt.com.
+function detectChatGPTAccount() {
+    try {
+        const selectors = [
+            '[data-testid="profile-button"] span',
+            '[aria-label*="account"] span',
+            'nav [class*="username"]',
+            'nav [class*="email"]',
+            '[class*="UserMenu"] span',
+            '[class*="account"] [class*="email"]',
+            'a[href*="/profile"] span',
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            if (el) {
+                const text = (el.innerText || el.textContent || "").trim();
+                if (text && text.length < 80 && (text.includes("@") || text.length > 3)) return text;
+            }
+        }
+        // Sidebar of nav e-mail-patroon
+        const navEl = document.querySelector("nav, aside");
+        if (navEl) {
+            const match = (navEl.innerText || "").match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+            if (match) return match[0];
+        }
+    } catch (e) { /* stil */ }
+    return null;
 }
 
 // Persist scraper events into storage logs

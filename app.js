@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.20.1";
+const APP_VERSION = "0.21.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2909,14 +2909,25 @@ const PROVIDER_ORDER = ["claude", "chatgpt", "gemini"];
    naar de bin (behoudt profiles{} en andermans wijzigingen).
    -------------------------------------------------------------------------- */
 function ensureDashboardConfig() {
-    if (!state.dashboardConfig) state.dashboardConfig = { providersOff: {}, blocks: {} };
+    if (!state.dashboardConfig) state.dashboardConfig = { providersOff: {}, blocks: {}, labels: {} };
     if (!state.dashboardConfig.providersOff) state.dashboardConfig.providersOff = {};
     if (!state.dashboardConfig.blocks) state.dashboardConfig.blocks = {};
+    if (!state.dashboardConfig.labels) state.dashboardConfig.labels = {};
     return state.dashboardConfig;
 }
 function normalizeDashboardConfig(c) {
     c = c || {};
-    return { providersOff: c.providersOff || {}, blocks: c.blocks || {} };
+    return { providersOff: c.providersOff || {}, blocks: c.blocks || {}, labels: c.labels || {} };
+}
+function getBlockLabel(pid, provider) {
+    return (ensureDashboardConfig().labels || {})[`${pid}|${provider}`] || null;
+}
+function setBlockLabel(pid, provider, label) {
+    const cfg = ensureDashboardConfig();
+    const key = `${pid}|${provider}`;
+    if (label && label.trim()) cfg.labels[key] = label.trim();
+    else delete cfg.labels[key];
+    persistDashboardConfig();
 }
 function blockOverride(pid, provider) {
     return (ensureDashboardConfig().blocks)[`${pid}|${provider}`] || null;
@@ -2949,6 +2960,7 @@ function persistDashboardConfig() {
             cloudDoc.dashboardConfig = {
                 providersOff: cfg.providersOff || {},
                 blocks: cfg.blocks || {},
+                labels: cfg.labels || {},
                 updatedAt: Date.now()
             };
             const enc = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
@@ -3212,8 +3224,13 @@ function buildSnapshotCard(provider, profile) {
     const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
     const r = 60, circ = 2 * Math.PI * r;
     const offset = circ - (pctNum / 100) * circ;
-    const onlineSt  = profileOnlineStatus(profile.lastSeen);
-    const lastSeen  = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+    const onlineSt    = profileOnlineStatus(profile.lastSeen);
+    const lastSeen    = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+    const customLabel = getBlockLabel(profile.id, provider);
+    const displayLabel = customLabel || profile.label || "";
+    const accountLine = sync.account
+        ? `<span class="card-account-sub">${escapeHtmlSafe(sync.account)}</span>`
+        : "";
     const errorInfo = profile.lastError && profile.lastError.provider === provider
         ? `<div class="sync-status-indicator mb-2" style="color:var(--accent-red);"><i class="fa-solid fa-triangle-exclamation"></i> <span>${escapeHtmlSafe(profile.lastError.message)}</span></div>`
         : "";
@@ -3232,7 +3249,11 @@ function buildSnapshotCard(provider, profile) {
                 <div class="brand-icon-wrapper ${meta.cls}"><i class="fa-solid ${meta.icon}"></i></div>
                 <div>
                     <h3>${meta.name}</h3>
-                    <span class="provider-meta">${escapeHtmlSafe(profile.label)}${profile.isMe ? " <i class='fa-solid fa-desktop' style='opacity:0.6;font-size:0.7rem;'></i>" : ""}</span>
+                    <span class="provider-meta">
+                        <span class="card-label-display">${escapeHtmlSafe(displayLabel)}${profile.isMe ? " <i class='fa-solid fa-desktop' style='opacity:0.6;font-size:0.7rem;'></i>" : ""}</span>
+                        <button class="card-label-edit-btn" data-mp-pid="${profile.id}" data-mp-provider="${provider}" title="Label aanpassen"><i class="fa-solid fa-pen-to-square"></i></button>
+                    </span>
+                    ${accountLine}
                 </div>
             </div>
             <span class="badge badge-${meta.cls}">Scraped</span>
@@ -3324,6 +3345,36 @@ function renderMultiProfileCards() {
             const pid = btn.getAttribute("data-mp-pid"), prov = btn.getAttribute("data-mp-provider");
             removeBlockFromView(pid, prov);
             renderMultiProfileCards();
+        });
+    });
+    // Label-bewerk-knoppen (✎)
+    multiGrid.querySelectorAll(".card-label-edit-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const pid  = btn.getAttribute("data-mp-pid");
+            const prov = btn.getAttribute("data-mp-provider");
+            const profile = (state.cloudProfiles || {})[pid] || {};
+            const current = getBlockLabel(pid, prov) || profile.label || "";
+            const provName = (PROVIDER_META[prov] || {}).name || prov;
+            // Inline edit: vervang de label-display tijdelijk door een input
+            const labelEl = btn.closest(".provider-meta").querySelector(".card-label-display");
+            if (!labelEl || labelEl.querySelector("input")) return; // al actief
+            const prev = labelEl.innerHTML;
+            labelEl.innerHTML = `<input class="card-label-input" type="text" value="${escapeHtmlSafe(current)}" placeholder="${escapeHtmlSafe(provName + " · " + (profile.label || ""))}" maxlength="40" style="width:100%;font-size:inherit;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:4px;color:inherit;padding:1px 4px;">`;
+            const input = labelEl.querySelector("input");
+            input.focus();
+            input.select();
+            const commit = () => {
+                const newLabel = input.value.trim();
+                setBlockLabel(pid, prov, newLabel);
+                renderMultiProfileCards();
+            };
+            const cancel = () => { labelEl.innerHTML = prev; };
+            input.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+                if (ev.key === "Escape") cancel();
+            });
+            input.addEventListener("blur", commit);
         });
     });
     // Restore-chips

@@ -2317,6 +2317,17 @@ body.auth-view .app-container {
     font-size: 0.74rem; cursor: pointer; transition: all 0.15s;
 }
 .mp-restore-chip:hover { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.4); color: #fff; }
+/* ── Card label edit (✎) ─────────────────────────────────────────────── */
+.card-label-edit-btn {
+    background: none; border: none; cursor: pointer; padding: 0 0 0 4px;
+    color: rgba(255,255,255,0.25); font-size: 0.62rem; vertical-align: middle;
+    transition: color 0.15s; line-height: 1;
+}
+.card-label-edit-btn:hover { color: rgba(255,255,255,0.7); }
+.card-account-sub {
+    display: block; font-size: 0.68rem; color: var(--text-muted, rgba(255,255,255,0.4));
+    margin-top: 1px; word-break: break-all;
+}
 /* ── Refresh-status balk ─────────────────────────────────────────────── */
 .refresh-status-bar {
     display: none; align-items: center; gap: 8px;
