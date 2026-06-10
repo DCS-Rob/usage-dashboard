@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.18.0">
+    <link rel="stylesheet" href="style.css?v=0.19.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -170,6 +170,9 @@
                             <img src="assets/openai-badge.svg" alt="OpenAI">
                         </a>
                     </div>
+
+                    <!-- Persistente refresh-statusbalk (aangevraagd → PC gezien → klaar / fout) -->
+                    <div id="refresh-status-bar" class="refresh-status-bar" style="display:none;"></div>
 
                     <!-- Profile Dropdown Section -->
                     <div class="profile-dropdown-wrapper">
@@ -937,6 +940,6 @@
 
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.18.0"></script>
+    <script src="app.js?v=0.19.0"></script>
 </body>
 </html>

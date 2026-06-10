@@ -2317,6 +2317,31 @@ body.auth-view .app-container {
     font-size: 0.74rem; cursor: pointer; transition: all 0.15s;
 }
 .mp-restore-chip:hover { background: rgba(99,102,241,0.18); border-color: rgba(99,102,241,0.4); color: #fff; }
+/* ── Refresh-status balk ─────────────────────────────────────────────── */
+.refresh-status-bar {
+    display: none; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 8px; font-size: 0.78rem;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.7);
+    max-width: 420px; margin: 4px 0;
+}
+.refresh-status-bar::before {
+    content: ""; display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; flex-shrink: 0;
+    background: rgba(255,255,255,0.3);
+}
+.refresh-status-bar.rsb-pending { border-color: rgba(251,191,36,0.3); background: rgba(251,191,36,0.06); color: #fbbf24; }
+.refresh-status-bar.rsb-pending::before { background: #fbbf24; animation: pulse-dot 1.2s infinite; }
+.refresh-status-bar.rsb-active  { border-color: rgba(99,102,241,0.35); background: rgba(99,102,241,0.07); color: #a5b4fc; }
+.refresh-status-bar.rsb-active::before  { background: #818cf8; animation: pulse-dot 0.8s infinite; }
+.refresh-status-bar.rsb-done   { border-color: rgba(74,222,128,0.3); background: rgba(74,222,128,0.06); color: #4ade80; }
+.refresh-status-bar.rsb-done::before   { background: #4ade80; }
+.refresh-status-bar.rsb-warn   { border-color: rgba(251,146,60,0.3); background: rgba(251,146,60,0.06); color: #fb923c; }
+.refresh-status-bar.rsb-warn::before   { background: #fb923c; animation: pulse-dot 1.8s infinite; }
+.refresh-status-bar.rsb-error  { border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.06); color: #f87171; }
+.refresh-status-bar.rsb-error::before  { background: #f87171; }
+
 .visible-blocks-list {
     display: flex; flex-direction: column; gap: 10px;
 }

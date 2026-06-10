@@ -4,6 +4,23 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.19.0] — 2026-06-10
+
+### Verbeterd — betrouwbaarheid & transparantie (Fase 1)
+
+- **Heartbeat:** `background.js` schrijft elke ~5 minuten `lastSeen` naar de cloud-bin, ook als er niets gescraped wordt. De PWA ziet nu of de PC actief is, ongeacht of er recente scrape-data is.
+- **Gekleurde online-statusdots per profiel:** profieltabs en snapshot-cards tonen nu een vierkleurige statusdot (🟢 < 2 min, geel-groen < 10 min, 🟡 < 30 min, 🔴 ouder) i.p.v. een binaire grijs/kleur-indicator.
+- **Persistente refresh-statusbalk:** bij een remote-refresh toont het dashboard nu een balk met stapsgewijze voortgang: "Requesting…" → "PC received…" → "Scraping…" → "Done!" (of een duidelijke foutmelding als de PC niet reageert). De balk verdwijnt niet bij het eerste toast-bericht.
+- **Throttle 90 s → 30 s:** de PC-achtergrondalarm checkt het refresh-verzoek nu elke 30 seconden (i.p.v. 90 s), waardoor de reactietijd na een telefoon-refresh bijna 3× korter is.
+- **Slow-poll fallback na 90 s:** als de PC niet reageert in 90 s schakelt de telefoon over op een trage poll (elke 15 s, max 5 pogingen) met zichtbare status "PC not responding yet — retrying slowly…" i.p.v. stil stoppen.
+- **Refresh-claim:** als de PC een verzoek oppakt schrijft hij `refreshClaimedBy` naar de bin; de PWA toont "PC is scraping…" zodra dit verschijnt.
+- **Scrape-foutmelding:** als een nieuw tab voor scrapen geopend werd en na 15 s geen data ontving, schrijft `background.js` een leesbare fout naar het profiel in de bin (`lastError`). De fout is zichtbaar als rode melding op de snapshot-card.
+- **Heartbeat wist `lastError`:** zodra de PC succesvol een heartbeat schrijft, wordt een vorige fout automatisch gewist.
+
+### Technisch
+- `background.js`: `maybeWriteHeartbeat`, `writeLastError`, `triggerScrapeFromBackground` accepteert nu `config/profileId/profileLabel` voor fout-schrijven; `handleTabSync` slaat `lt_sync_done_<provider>` op.
+- `app.js`: `profileOnlineStatus(lastSeen)`, `setRefreshStatus(step)`, rework `startFastPollingForRemoteSync` (slow-poll + claim-detectie + `processPollResult` helper).
+
 ## [0.18.0] — 2026-06-02
 
 ### Opgelost — KRITIEK (data-verlies)

@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.18.0";
+const APP_VERSION = "0.19.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2350,6 +2350,40 @@ function formatWeeklyTimeMs(ms) {
     return parts.join(' ');
 }
 
+// Online-status helper op basis van lastSeen leeftijd.
+// Geeft een kleur, CSS-klasse en leesbaar label terug voor statusdots en tooltips.
+function profileOnlineStatus(lastSeen) {
+    if (!lastSeen) return { color: "rgba(255,255,255,0.2)", cls: "ps-unknown", label: "No data" };
+    const age = Date.now() - lastSeen;
+    if (age < 2   * 60 * 1000) return { color: "#4ade80", cls: "ps-online",  label: "Online"  };
+    if (age < 10  * 60 * 1000) return { color: "#a3e635", cls: "ps-recent",  label: formatTimeAgo(lastSeen) + " ago" };
+    if (age < 30  * 60 * 1000) return { color: "#fbbf24", cls: "ps-away",    label: formatTimeAgo(lastSeen) + " ago" };
+    return                             { color: "#f87171", cls: "ps-offline", label: formatTimeAgo(lastSeen) + " ago" };
+}
+
+// Toont een persistente statusbalk voor het refresh-proces (aangevraagd → PC gezien → klaar).
+// step: 'idle'|'requesting'|'waiting'|'pc-seen'|'scraping'|'done'|'timeout'|'slow-polling'|'error'
+function setRefreshStatus(step) {
+    const bar = document.getElementById("refresh-status-bar");
+    if (!bar) return;
+    const MAP = {
+        idle:          { text: "",                                                            cls: "",               visible: false },
+        requesting:    { text: "Sending refresh request to PC…",                             cls: "rsb-pending"  },
+        waiting:       { text: "Waiting for PC to pick up the request…",                     cls: "rsb-pending"  },
+        "pc-seen":     { text: "PC received the request — scraping in progress…",            cls: "rsb-active"   },
+        scraping:      { text: "PC is scraping usage data…",                                 cls: "rsb-active"   },
+        done:          { text: "Data synced from PC!",                                       cls: "rsb-done"     },
+        timeout:       { text: "PC not responding yet. Is Chrome open? Retrying slowly…",   cls: "rsb-warn"     },
+        "slow-polling":{ text: "Still waiting for PC (slow retry)…",                        cls: "rsb-warn"     },
+        error:         { text: "PC did not respond. Is Chrome open and logged in?",         cls: "rsb-error"    },
+    };
+    const s = MAP[step] || MAP.idle;
+    if (s.visible === false) { bar.style.display = "none"; return; }
+    bar.style.display = "flex";
+    bar.className = "refresh-status-bar " + (s.cls || "");
+    bar.textContent = s.text;
+}
+
 function formatTimeAgo(timestamp) {
     if (!timestamp) return "never";
     const diff = Date.now() - timestamp;
@@ -2781,12 +2815,12 @@ function renderProfileBar() {
         allIds.forEach(id => {
             const p = allProfiles[id];
             const label = p.label || "Profile";
-            const stale = (now - (p.lastSeen || 0)) > 6 * 60 * 60 * 1000;
-            const pct = p.syncStatus && p.syncStatus.claude ? p.syncStatus.claude.pctRemaining : undefined;
             const isMe = id === myId;
             const active = state.selectedProfileId === id ? "active" : (allIds.length === 1 ? "active" : "");
-            let dotColor = stale ? "rgba(255,255,255,0.2)" : (pct === undefined ? "rgba(255,255,255,0.4)" : pct > 50 ? "#4ade80" : pct > 20 ? "#fbbf24" : "#f87171");
-            const title = stale ? `${label} — stale (>6h)` : `${label}${isMe ? " (this device)" : ""}`;
+            const onlineSt = profileOnlineStatus(p.lastSeen);
+            const dotColor = onlineSt.color;
+            const stale = (now - (p.lastSeen || 0)) > 6 * 60 * 60 * 1000;
+            const title = `${label}${isMe ? " (this device)" : ""} — ${onlineSt.label}`;
             const deleteBtn = !isMe ? `<span class="ptab-delete" data-del-pid="${id}" title="Remove ${label}" role="button" aria-label="Remove profile">&times;</span>` : "";
             html += `<button class="profile-tab ${active}" data-pid="${id}" title="${title}">
                 <span class="ptab-dot" style="background:${dotColor};"></span>${label}${isMe ? " <i class='fa-solid fa-desktop' style='font-size:0.65rem;opacity:0.6;'></i>" : ""}${deleteBtn}
@@ -3135,7 +3169,11 @@ function buildSnapshotCard(provider, profile) {
     const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
     const r = 60, circ = 2 * Math.PI * r;
     const offset = circ - (pctNum / 100) * circ;
-    const lastSeen = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+    const onlineSt  = profileOnlineStatus(profile.lastSeen);
+    const lastSeen  = profile.lastSeen ? formatTimeAgo(profile.lastSeen) : "—";
+    const errorInfo = profile.lastError && profile.lastError.provider === provider
+        ? `<div class="sync-status-indicator mb-2" style="color:var(--accent-red);"><i class="fa-solid fa-triangle-exclamation"></i> <span>${escapeHtmlSafe(profile.lastError.message)}</span></div>`
+        : "";
 
     const sectionsHTML = computeProviderPace(provider, sync, now, monthlySync)
         .map(s => paceSectionHTML(s.title, meta.cls, s.capPct, s.timePct, s.resetLabel))
@@ -3170,7 +3208,8 @@ function buildSnapshotCard(provider, profile) {
             </div>
         </div>
         <div class="card-stats">
-            <div class="sync-status-indicator mb-2"><i class="fa-solid fa-circle-check text-green"></i> <span>${profile.isMe ? "Tab sync" : "Last seen"}: ${lastSeen}</span></div>
+            <div class="sync-status-indicator mb-2"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${onlineSt.color};margin-right:5px;flex-shrink:0;"></span><span>${profile.isMe ? "Tab sync" : "Last seen"}: ${lastSeen}</span></div>
+            ${errorInfo}
             ${sectionsHTML}
         </div>
     </div>`;
@@ -3520,7 +3559,7 @@ function requestRemoteRefresh() {
         return;
     }
     remoteRefreshInFlight = true;
-
+    setRefreshStatus("requesting");
     showToast(`<i class="fa-solid fa-signal fa-fade"></i> Requesting remote PC sync...`);
 
     // 1. Fetch current cloud data first
@@ -3567,9 +3606,11 @@ function requestRemoteRefresh() {
                     console.warn("[USAGE DASHBOARD Phone] Verificatie decrypt-fout:", e);
                 }
                 if (!verified) {
-                    showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Request sent, but the bin doesn't show an update yet. The PC may receive the request with a delay.`);
+                    setRefreshStatus("waiting");
+                    showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Request sent — waiting for PC to respond.`);
                 } else {
-                    showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC scrapers triggered remotely! Scraping in progress...`);
+                    setRefreshStatus("pc-seen");
+                    showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC received the request — scraping in progress…`);
                 }
                 // 5b. Start fast polling ongeacht verificatie
                 remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
@@ -3578,6 +3619,7 @@ function requestRemoteRefresh() {
     })
     .catch(err => {
         remoteRefreshInFlight = false;
+        setRefreshStatus("error");
         console.error("[USAGE DASHBOARD Remote Scrape] Failed:", err);
         showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Remote trigger failed.`);
     });
@@ -3606,61 +3648,80 @@ function startFastPollingForRemoteSync(baseline) {
         if (icon) icon.classList.add("fa-spin");
     }
 
+    // Interne helper: verwerk een cloud-lees-resultaat en retourneer true als sync klaar is.
+    function processPollResult(data) {
+        if (!data || !data.data) return false;
+        const syncClient = isSyncClient();
+        const decryptedStr  = CryptoSync.decrypt(data.data, syncClient.pairingKey);
+        const decryptedData = JSON.parse(decryptedStr);
+
+        const cloudClaude  = decryptedData.syncStatus?.claude?.lastSynced  || 0;
+        const cloudChatgpt = decryptedData.syncStatus?.chatgpt?.lastSynced || 0;
+        const flagCleared  = !decryptedData.refreshRequested;
+        const freshScrape  = cloudClaude > baselineClaude || cloudChatgpt > baselineChatgpt;
+
+        // Update status op basis van claim-veld zodat de gebruiker "PC seen it" ziet.
+        if (decryptedData.refreshClaimedBy && decryptedData.refreshRequested) {
+            setRefreshStatus("scraping");
+        }
+
+        if (flagCleared && freshScrape) {
+            state.userLogs     = decryptedData.logs     || [];
+            state.userThreads  = decryptedData.threads  || [];
+            state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
+            state.syncStatus   = decryptedData.syncStatus || { claude: null, chatgpt: null };
+
+            lastSyncTime = Date.now();
+            updateUI();
+            updateMobileSyncIndicator(true);
+            setRefreshStatus("done");
+            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced live from your PC!`);
+            return true;
+        }
+        return false;
+    }
+
+    function stopSpinners() {
+        if (btnSyncAll)   { const i = btnSyncAll.querySelector("i");   if (i) i.classList.remove("fa-spin"); }
+        if (btnMobRefresh){ const i = btnMobRefresh.querySelector("i"); if (i) i.classList.remove("fa-spin"); }
+    }
+
     fastPollIntervalId = setInterval(() => {
         fastPollAttempts++;
-        if (fastPollAttempts > 36) { // Max 36 attempts * 2.5s = 90s (geeft achtergrond-alarm + scrape de tijd)
+
+        // Na 36 pogingen (90s): schakel over naar trage poll (15s, max 5x) in plaats van stil stoppen.
+        if (fastPollAttempts > 36) {
             clearInterval(fastPollIntervalId);
             fastPollIntervalId = null;
-            if (btnSyncAll) {
-                const icon = btnSyncAll.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            if (btnMobRefresh) {
-                const icon = btnMobRefresh.querySelector("i");
-                if (icon) icon.classList.remove("fa-spin");
-            }
-            showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Scraper not responding. Is Chrome open on your PC?`);
+            stopSpinners();
+            setRefreshStatus("timeout");
+            showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> PC not responding yet — retrying slowly…`);
+
+            let slowAttempts = 0;
+            fastPollIntervalId = setInterval(() => {
+                slowAttempts++;
+                if (slowAttempts > 5) {
+                    clearInterval(fastPollIntervalId);
+                    fastPollIntervalId = null;
+                    setRefreshStatus("error");
+                    showToast(`<i class="fa-solid fa-circle-xmark" style="color: var(--accent-red);"></i> PC not responding. Is Chrome open on your PC?`);
+                    return;
+                }
+                setRefreshStatus("slow-polling");
+                const syncClient = isSyncClient();
+                syncRelay(syncClient).read(syncClient.binId)
+                .then(data => { if (processPollResult(data)) { clearInterval(fastPollIntervalId); fastPollIntervalId = null; } })
+                .catch(err => console.warn("[Remote Poll Slow] error:", err));
+            }, 15000);
             return;
         }
 
         const syncClient = isSyncClient();
         syncRelay(syncClient).read(syncClient.binId)
         .then(data => {
-            if (!data || !data.data) return;
-            const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
-            const decryptedData = JSON.parse(decryptedStr);
-
-            const cloudClaude = decryptedData.syncStatus?.claude?.lastSynced || 0;
-            const cloudChatgpt = decryptedData.syncStatus?.chatgpt?.lastSynced || 0;
-            const flagCleared = decryptedData.refreshRequested === false || !decryptedData.refreshRequested;
-            const freshScrape = cloudClaude > baselineClaude || cloudChatgpt > baselineChatgpt;
-
-            // Pas klaar wanneer (a) de PC de vlag heeft gewist EN (b) er
-            // aantoonbaar een nieuwere scrape is geüpload. Dit voorkomt dat
-            // we vrolijk klaar melden op een stale snapshot.
-            if (flagCleared && freshScrape) {
+            if (processPollResult(data)) {
                 clearInterval(fastPollIntervalId);
                 fastPollIntervalId = null;
-
-                state.userLogs = decryptedData.logs || [];
-                state.userThreads = decryptedData.threads || [];
-                state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
-                state.syncStatus = decryptedData.syncStatus || { claude: null, chatgpt: null };
-
-                lastSyncTime = Date.now();
-                updateUI();
-                updateMobileSyncIndicator(true);
-
-                if (btnSyncAll) {
-                    const icon = btnSyncAll.querySelector("i");
-                    if (icon) icon.classList.remove("fa-spin");
-                }
-                if (btnMobRefresh) {
-                    const icon = btnMobRefresh.querySelector("i");
-                    if (icon) icon.classList.remove("fa-spin");
-                }
-
-                showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced live from your PC!`);
             }
         })
         .catch(err => console.warn("[Remote Poll Wait] error:", err));

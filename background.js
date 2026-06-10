@@ -320,6 +320,9 @@ function createInviteUserProfile() {
 
 // Handle data scraped from settings/analytics tabs
 function handleTabSync(provider, data) {
+    // Registreer succesvolle sync zodat de scrape-fout-timer weet dat er data ontvangen is.
+    chrome.storage.local.set({ [`lt_sync_done_${provider}`]: Date.now() });
+
     return new Promise((resolve, reject) => {
         chrome.storage.local.get(["lt_users", "lt_current_user"], (res) => {
             const currentUser = res.lt_current_user;
@@ -572,13 +575,19 @@ function logSync(message) {
 // SW-restarts overleeft — voorkomt dubbele scrape-triggers.
 // =================================================================
 function checkForRemoteRefreshRequestBG() {
-    chrome.storage.local.get(["lt_sync_config", "lt_last_bg_scrape"], (res) => {
+    chrome.storage.local.get(["lt_sync_config", "lt_last_bg_scrape", "lt_profile_id", "lt_profile_label"], (res) => {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
 
-        // Throttle: max 1 scrape-trigger per 90s (overleeft SW-restarts)
+        const profileId    = res.lt_profile_id    || "default";
+        const profileLabel = res.lt_profile_label || "Profile";
+
+        // Heartbeat: schrijf lastSeen naar de bin elke ~5 minuten (onafhankelijk van scrape-throttle).
+        maybeWriteHeartbeat(config, profileId, profileLabel);
+
+        // Throttle: max 1 scrape-trigger per 30s (overleeft SW-restarts)
         const lastTrigger = res.lt_last_bg_scrape || 0;
-        if (Date.now() - lastTrigger < 90000) return;
+        if (Date.now() - lastTrigger < 30000) return;
 
         syncRelay(config).read(config.binId)
         .then(data => {
@@ -600,23 +609,41 @@ function checkForRemoteRefreshRequestBG() {
                 return;
             }
 
+            // Skip als een ander profiel dit verzoek al recent geclaimd heeft (< 45s geleden).
+            const claimedBy = decryptedData.refreshClaimedBy;
+            const claimedAt = decryptedData.refreshClaimedAt || 0;
+            if (claimedBy && claimedBy !== profileId && Date.now() - claimedAt < 45000) {
+                logSync(`[Cloud Remote BG] Verzoek al geclaimd door ${claimedBy} — skip.`);
+                return;
+            }
+
             // Sla trigger-tijd op in storage (overleeft SW-suspend/restart)
             chrome.storage.local.set({ lt_last_bg_scrape: Date.now() });
 
+            // Claim het verzoek: schrijf profileId zodat de PWA weet wie het oppakt.
+            const claimDoc = Object.assign({}, decryptedData, {
+                refreshClaimedBy:  profileId,
+                refreshClaimedAt:  Date.now()
+            });
+            const claimEnc = CryptoSync.encrypt(JSON.stringify(claimDoc), config.pairingKey);
+            syncRelay(config).write(config.binId, { data: claimEnc }).catch(() => {});
+
             logSync("[Cloud Remote BG] Telefoon vroeg om refresh — scrapers worden op achtergrond gestart.");
-            triggerScrapeFromBackground("claude");
-            setTimeout(() => triggerScrapeFromBackground("chatgpt"), 1500);
+            triggerScrapeFromBackground("claude", config, profileId, profileLabel);
+            setTimeout(() => triggerScrapeFromBackground("chatgpt", config, profileId, profileLabel), 1500);
         })
         .catch(() => { /* stil */ });
     });
 }
 
-function triggerScrapeFromBackground(provider) {
+function triggerScrapeFromBackground(provider, config, profileId, profileLabel) {
     const queryPattern = provider === "claude" ? "*://*.claude.ai/*" : "*://*.chatgpt.com/*";
     const fallbackUrl = provider === "claude"
         ? "https://claude.ai/settings/usage"
         : "https://chatgpt.com/codex/cloud/settings/analytics#personal-usage";
     const matchPart = provider === "claude" ? "settings/usage" : "analytics";
+    const scrapeStartKey = `lt_scrape_started_${provider}`;
+    const scrapeDoneKey  = `lt_sync_done_${provider}`;
 
     chrome.tabs.query({ url: queryPattern }, (tabs) => {
         const existingTab = (tabs || []).find(t => t.url && t.url.includes(matchPart));
@@ -625,11 +652,29 @@ function triggerScrapeFromBackground(provider) {
             chrome.tabs.reload(existingTab.id);
         } else {
             // Open op achtergrond, sluit na 8.5s
+            const startTs = Date.now();
+            chrome.storage.local.set({ [scrapeStartKey]: startTs });
+
             chrome.tabs.create({ url: fallbackUrl, active: false }, (newTab) => {
                 if (!newTab) return;
                 setTimeout(() => {
                     try { chrome.tabs.remove(newTab.id); } catch (e) { /* ignore */ }
                 }, 8500);
+
+                // Schrijf een fout naar de bin als er na 15s geen sync-bericht ontvangen is.
+                setTimeout(() => {
+                    chrome.storage.local.get([scrapeStartKey, scrapeDoneKey], (r) => {
+                        const started = r[scrapeStartKey] || 0;
+                        const done    = r[scrapeDoneKey]  || 0;
+                        // Alleen fout schrijven als dit nog steeds de recentste scrape-poging is
+                        // en er géén sync ontvangen is ná het starten.
+                        if (started === startTs && done < startTs && config && profileId) {
+                            const provName = provider === "claude" ? "Claude.ai" : "ChatGPT";
+                            writeLastError(config, profileId, profileLabel || "Profile", provider,
+                                `No data received — check if logged in to ${provName} on this Chrome profile`);
+                        }
+                    });
+                }, 15000);
             });
         }
     });
@@ -663,6 +708,47 @@ function resetRemoteRefreshRequestFlagBG(config) {
         })
         .catch(() => {});
     });
+}
+
+// Schrijft een heartbeat (lastSeen) naar de bin, maximaal eens per 4 minuten.
+// Zorgt dat de PWA weet of de PC actief is, ook als er niets gescraped wordt.
+function maybeWriteHeartbeat(config, profileId, profileLabel) {
+    chrome.storage.local.get(["lt_last_heartbeat"], (res) => {
+        if (Date.now() - (res.lt_last_heartbeat || 0) < 4 * 60 * 1000) return;
+        chrome.storage.local.set({ lt_last_heartbeat: Date.now() });
+
+        syncRelay(config).read(config.binId).then(existing => {
+            let cloudDoc = {};
+            if (existing && existing.data) {
+                try { cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey)); } catch (e) {}
+            }
+            if (!cloudDoc.profiles) cloudDoc.profiles = {};
+            if (!cloudDoc.profiles[profileId]) cloudDoc.profiles[profileId] = {};
+            cloudDoc.profiles[profileId].lastSeen   = Date.now();
+            cloudDoc.profiles[profileId].label      = profileLabel;
+            cloudDoc.profiles[profileId].pcOnline   = true;
+            // Wis een eventuele vorige fout zodra de PC weer actief is.
+            delete cloudDoc.profiles[profileId].lastError;
+            const enc = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+            return syncRelay(config).write(config.binId, { data: enc });
+        }).catch(() => {});
+    });
+}
+
+// Schrijft een scrape-fout naar het profiel-slice in de bin zodat de PWA hem kan tonen.
+function writeLastError(config, profileId, profileLabel, provider, message) {
+    syncRelay(config).read(config.binId).then(existing => {
+        let cloudDoc = {};
+        if (existing && existing.data) {
+            try { cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey)); } catch (e) {}
+        }
+        if (!cloudDoc.profiles) cloudDoc.profiles = {};
+        if (!cloudDoc.profiles[profileId]) cloudDoc.profiles[profileId] = { label: profileLabel };
+        cloudDoc.profiles[profileId].lastError = { provider, message, at: Date.now() };
+        logSync(`[Scrape Error] ${provider}: ${message}`);
+        const enc = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
+        return syncRelay(config).write(config.binId, { data: enc });
+    }).catch(() => {});
 }
 
 function pushUserDataToCloud(user) {
