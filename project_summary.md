@@ -2,23 +2,24 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.22.4**
+**Huidige versie: 0.25.0**
 
 ---
 
 ## 📍 Huidige staat (sessie-handoff)
 
-Werk-arc v0.19 → v0.22.4, allemaal gepusht en live op GitHub Pages:
+Werk-arc v0.19 → v0.25.0, allemaal gepusht en live op GitHub Pages:
 
 - **Firebase SSE-streaming (v0.20.0)** — PWA en extensie-dashboard luisteren via realtime Server-Sent Events; data verschijnt < 1s na een scrape. 5-min backup-poll voor fallback.
 - **Reset-timer bugfix (v0.21.1)** — `content.js` berekent `resetSessionAbsoluteTs` bij het scrapen; timer klopt exact op elk apparaat ongeacht sync-vertraging.
 - **"Tab sync" fix (v0.21.1)** — toont nu `lastSynced` (echte scrape) i.p.v. `lastSeen` (heartbeat).
 - **Aangepaste labels + account-detectie (v0.21.0, Fase 5)** — ✎-knop per kaart voor eigen label (bijv. "Kevin — werk"); e-mailadres/accountnaam automatisch gedetecteerd als subtitel op claude.ai en chatgpt.com. Labels opgeslagen in gedeelde `dashboardConfig.labels`.
 - **UI-herindeling (v0.22.x, Fase 6)** — profielenbalk uit het hoofdscherm; nu één compacte dropdown-knop `[● Rob-DCS ▼]` in de hoofdbalk. Klikken toont profiellijst (met online-status), "Add / restore blocks" (met badge voor verborgen blokken) en "Manage profiles" (opent zijpaneel). Geen losse "+" knop of contextbalk boven de kaarten meer.
+- **Onboarding-wizard (v0.25.0, Fase 7)** — Guided setup vanuit banner en profielen-zijpaneel voor eigen dashboard starten, bestaand dashboard joinen en extra accounts/personen koppelen. `ONBOARDING.md` toegevoegd.
 
 **Live getest:** twee Chrome-profielen (Rob-DCS + Personal) succesvol gekoppeld via invite-link; beide zichtbaar in het dropdown (2 online).
 
-**Open punten:** drag-to-reorder van kaarten, profielgroepen, analyse-database (Fase 3).
+**Open punten:** drag-to-reorder van kaarten, profielgroepen, analyse-database (Fase 3), eventuele AES-GCM-migratie als aparte fase.
 
 ---
 
@@ -220,6 +221,7 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 | `style.css` | CSS | Glassmorphism UI, animaties, responsive |
 | `sw.js` | Service Worker | PWA cache (stale-while-revalidate) |
 | `manifest.webmanifest` | PWA manifest | Installeerbaar als app op telefoon |
+| `ONBOARDING.md` | Documentatie | Gebruikersvriendelijke setup voor eigen dashboard, joinen en extra accounts |
 | `lib/chart.min.js` | Bibliotheek | Chart.js lokaal gebundeld (CDN geblokkeerd door MV3) — enige lib in `lib/` |
 | `bump-version.ps1` | Script | Werkt alle versienummers bij in één keer |
 | `CHANGELOG.md` | Documentatie | Versiegeschiedenis |
@@ -239,7 +241,7 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 
 ### PWA — publieke host (GitHub Pages, default)
 - Auto-deploy via `.github/workflows/pages.yml` naar `https://dcs-rob.github.io/usage-dashboard/`
-- Publiceert **alleen** de PWA-bestanden (index.html, app.js, style.css, sw.js, manifest.webmanifest, assets/, lib/) — geen extensie-manifest, background.js of content.js
+- Publiceert **alleen** de PWA-bestanden (index.html, app.js, style.css, sw.js, manifest.webmanifest, ONBOARDING.md, assets/, lib/) — geen extensie-manifest, background.js of content.js
 - Veilig omdat de data E2E-versleuteld in npoint.io staat; zonder `pairingKey` (alleen via QR naar de eigen telefoon) valt er niets te lezen
 - Pages-bron staat op "GitHub Actions": `gh api -X PUT repos/DCS-Rob/usage-dashboard/pages -f build_type=workflow`
 
@@ -274,6 +276,7 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.25.0** | 2026-06-10 | **Fase 7:** Guided setup wizard + `ONBOARDING.md`; eigen dashboard starten, bestaand dashboard joinen en extra account/persoon koppelen. |
 | **0.22.4** | 2026-06-10 | "+" blok-knop samengevoegd in profiel-dropdown; header-label toont "All profiles" zonder online-telling. |
 | **0.22.3** | 2026-06-10 | Profielindicator verplaatst naar hoofdbalk als `[● Naam ▼]` dropdown; aparte contextbalk boven kaarten verwijderd. |
 | **0.22.0–0.22.2** | 2026-06-10 | **Fase 6 UI-herindeling:** profielen naar zijpaneel, blokken naar "+" FAB-menu; iteratieve samenvoegingen. |

@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.22.4">
+    <link rel="stylesheet" href="style.css?v=0.25.0">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -231,6 +231,9 @@
                                     Open a page below in Chrome — the extension will automatically read your usage data and show it here.
                                 </p>
                                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button type="button" id="btn-open-onboarding-banner" class="btn-primary" style="padding:5px 12px; font-size:0.75rem;">
+                                        <i class="fa-solid fa-route"></i> Setup guide
+                                    </button>
                                     <a href="https://claude.ai/settings/usage" target="_blank" style="display:inline-flex; align-items:center; gap:6px; font-size:0.75rem; font-weight:600; color:var(--color-claude); background:rgba(242,140,40,0.12); border:1px solid rgba(242,140,40,0.3); padding:5px 12px; border-radius:20px; text-decoration:none;">
                                         <i class="fa-solid fa-arrow-up-right-from-square"></i> claude.ai/settings/usage
                                     </a>
@@ -920,6 +923,9 @@
             <button class="btn-add-profile-tab sidebar-add-profile-btn" id="btn-open-add-profile">
                 <i class="fa-solid fa-user-plus"></i> Add profile
             </button>
+            <button class="btn-add-profile-tab sidebar-add-profile-btn" id="btn-open-onboarding-sidebar">
+                <i class="fa-solid fa-route"></i> Guided setup
+            </button>
 
             <!-- Add profile panel -->
             <div id="add-profile-panel" class="sidebar-add-profile-panel" style="display:none;">
@@ -962,7 +968,83 @@
         </div>
     </aside>
 
+    <!-- ONBOARDING WIZARD -->
+    <div id="onboarding-modal" class="onboarding-modal" style="display:none;" aria-hidden="true">
+        <div class="onboarding-dialog" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+            <div class="onboarding-header">
+                <div>
+                    <div class="onboarding-kicker">Guided setup</div>
+                    <h2 id="onboarding-title">Connect accounts without guesswork</h2>
+                </div>
+                <button type="button" id="btn-close-onboarding" class="onboarding-close" title="Close"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="onboarding-steps" id="onboarding-steps">
+                <button type="button" class="onboarding-step active" data-onboarding-step="own"><i class="fa-solid fa-gauge-high"></i> Own dashboard</button>
+                <button type="button" class="onboarding-step" data-onboarding-step="join"><i class="fa-solid fa-link"></i> Join dashboard</button>
+                <button type="button" class="onboarding-step" data-onboarding-step="account"><i class="fa-solid fa-user-plus"></i> Add account</button>
+            </div>
+
+            <div class="onboarding-panel active" data-onboarding-panel="own">
+                <h3>Start my own dashboard</h3>
+                <p>Create a fresh sync space for this Chrome profile. After this, open your provider usage pages and the cards will fill automatically.</p>
+                <div class="onboarding-form-grid">
+                    <label>
+                        Profile name
+                        <input id="onboarding-own-name" type="text" placeholder="e.g. Rob - Personal">
+                    </label>
+                    <label>
+                        Connection
+                        <select id="onboarding-own-provider">
+                            <option value="firebase" selected>Firebase - realtime</option>
+                            <option value="npoint">npoint - fallback</option>
+                        </select>
+                    </label>
+                </div>
+                <button type="button" id="btn-onboarding-create-own" class="btn-primary onboarding-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Create my dashboard</button>
+                <div id="onboarding-own-result" class="onboarding-result" style="display:none;"></div>
+            </div>
+
+            <div class="onboarding-panel" data-onboarding-panel="join">
+                <h3>Join an existing dashboard</h3>
+                <p>Use this when someone shared an invite link with you. The extension will save the sync settings in this Chrome profile.</p>
+                <label class="onboarding-full-label">
+                    Invite link
+                    <input id="onboarding-join-url" type="text" placeholder="Paste the invite link here">
+                </label>
+                <div class="onboarding-actions">
+                    <button type="button" id="btn-onboarding-join" class="btn-primary"><i class="fa-solid fa-link"></i> Join from link</button>
+                    <a class="btn-secondary onboarding-doc-link" href="ONBOARDING.md" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-book-open"></i> Open guide</a>
+                </div>
+                <div class="onboarding-note">
+                    If this page is the PWA and the extension is missing, open the same invite in Chrome after loading the extension.
+                </div>
+            </div>
+
+            <div class="onboarding-panel" data-onboarding-panel="account">
+                <h3>Add another account or person</h3>
+                <p>Use a separate Chrome profile for each extra ChatGPT or Claude account. The wizard prepares the invite and the exact next steps.</p>
+                <div class="onboarding-form-grid">
+                    <label>
+                        Account/person label
+                        <input id="onboarding-account-name" type="text" placeholder="e.g. Sorin - ChatGPT">
+                    </label>
+                    <label>
+                        Provider to open after joining
+                        <select id="onboarding-account-provider">
+                            <option value="chatgpt" selected>ChatGPT</option>
+                            <option value="claude">Claude</option>
+                            <option value="gemini">Gemini</option>
+                        </select>
+                    </label>
+                </div>
+                <button type="button" id="btn-onboarding-build-invite" class="btn-primary onboarding-primary"><i class="fa-solid fa-link"></i> Prepare invite</button>
+                <div id="onboarding-account-result" class="onboarding-result" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Script Entry -->
-    <script src="app.js?v=0.22.4"></script>
+    <script src="app.js?v=0.25.0"></script>
 </body>
 </html>

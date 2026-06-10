@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.22.4";
+const APP_VERSION = "0.25.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -181,6 +181,7 @@ document.addEventListener("DOMContentLoaded", () => {
     initQRScanner();
     initGettingStartedBanner();
     renderEnvironmentIndicator();
+    initOnboardingWizard();
     setTimeout(checkDeploySyncStatus, 1200);
     // Build info wordt nu gerenderd zodra de Settings-tab geopend wordt
     // (zie nav-tab click handler in setupEventListeners). Doe één rendering
@@ -1040,6 +1041,228 @@ function initProfilesSidebar() {
     }
     if (closeBtn) closeBtn.addEventListener("click", closeSidebar);
     if (overlay)  overlay.addEventListener("click", closeSidebar);
+}
+
+function initOnboardingWizard() {
+    const modal = document.getElementById("onboarding-modal");
+    if (!modal) return;
+
+    const openButtons = [
+        document.getElementById("btn-open-onboarding-banner"),
+        document.getElementById("btn-open-onboarding-sidebar")
+    ].filter(Boolean);
+
+    openButtons.forEach(btn => btn.addEventListener("click", () => openOnboardingWizard()));
+
+    const closeBtn = document.getElementById("btn-close-onboarding");
+    if (closeBtn) closeBtn.addEventListener("click", closeOnboardingWizard);
+    modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeOnboardingWizard();
+    });
+
+    modal.querySelectorAll(".onboarding-step").forEach(btn => {
+        btn.addEventListener("click", () => setOnboardingStep(btn.getAttribute("data-onboarding-step")));
+    });
+
+    const createBtn = document.getElementById("btn-onboarding-create-own");
+    if (createBtn) createBtn.addEventListener("click", createOwnDashboardFromOnboarding);
+
+    const joinBtn = document.getElementById("btn-onboarding-join");
+    if (joinBtn) joinBtn.addEventListener("click", () => {
+        const input = document.getElementById("onboarding-join-url");
+        const value = input ? input.value.trim() : "";
+        if (!value) {
+            showToast(`<i class="fa-solid fa-circle-exclamation"></i> Paste an invite link first.`);
+            return;
+        }
+        joinExistingSync(value);
+        closeOnboardingWizard();
+    });
+
+    const inviteBtn = document.getElementById("btn-onboarding-build-invite");
+    if (inviteBtn) inviteBtn.addEventListener("click", buildAccountInviteFromOnboarding);
+}
+
+function openOnboardingWizard(step = "account") {
+    const modal = document.getElementById("onboarding-modal");
+    if (!modal) return;
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
+    setOnboardingStep(step);
+    prefillOnboardingFields();
+}
+
+function closeOnboardingWizard() {
+    const modal = document.getElementById("onboarding-modal");
+    if (!modal) return;
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+}
+
+function setOnboardingStep(step) {
+    const modal = document.getElementById("onboarding-modal");
+    if (!modal) return;
+    modal.querySelectorAll(".onboarding-step").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-onboarding-step") === step);
+    });
+    modal.querySelectorAll(".onboarding-panel").forEach(panel => {
+        panel.classList.toggle("active", panel.getAttribute("data-onboarding-panel") === step);
+    });
+}
+
+function prefillOnboardingFields() {
+    DB.get(["lt_profile_label"], (res) => {
+        const label = (res.lt_profile_label || "").trim();
+        const own = document.getElementById("onboarding-own-name");
+        if (own && !own.value) own.value = label && label !== "Dashboard User" ? label : "My Dashboard";
+        const account = document.getElementById("onboarding-account-name");
+        if (account && !account.value) account.value = "Sorin - ChatGPT";
+    });
+}
+
+function dbGetPromise(keys) {
+    return new Promise(resolve => DB.get(keys, resolve));
+}
+
+function dbSetPromise(data) {
+    return new Promise(resolve => DB.set(data, resolve));
+}
+
+function getOrCreateProfileId(existingId) {
+    if (existingId) return existingId;
+    return "pid-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 6);
+}
+
+async function createOwnDashboardFromOnboarding() {
+    const btn = document.getElementById("btn-onboarding-create-own");
+    const result = document.getElementById("onboarding-own-result");
+    const nameInput = document.getElementById("onboarding-own-name");
+    const providerSelect = document.getElementById("onboarding-own-provider");
+    const label = (nameInput && nameInput.value.trim()) || "My Dashboard";
+    const providerId = providerSelect && SYNC_PROVIDERS[providerSelect.value] ? providerSelect.value : "firebase";
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Creating dashboard...`;
+    }
+
+    try {
+        const current = await dbGetPromise(["lt_profile_id"]);
+        const profileId = getOrCreateProfileId(current.lt_profile_id);
+        const pairingKey = "LT-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+        const doc = {
+            logs: state.userLogs || [],
+            threads: state.userThreads || [],
+            settings: state.userSettings,
+            syncStatus: state.syncStatus || {},
+            dashboardConfig: ensureDashboardConfig(),
+            profiles: {
+                [profileId]: {
+                    label,
+                    syncStatus: state.syncStatus || {},
+                    lastSeen: Date.now()
+                }
+            }
+        };
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(doc), pairingKey);
+        const binId = await SYNC_PROVIDERS[providerId].createBin({ data: encryptedStr });
+        const syncConfig = { enabled: true, pairingKey, binId, provider: providerId };
+
+        await dbSetPromise({
+            lt_sync_config: syncConfig,
+            lt_profile_id: profileId,
+            lt_profile_label: label,
+            lt_current_user: label
+        });
+        state.currentUser = label;
+        state.myProfileId = profileId;
+        state.myProfileLabel = label;
+
+        renderMobileSyncSettings();
+        loadCloudProfilesForDesktop();
+        renderProfileBar();
+        updateProfileContextBar();
+
+        if (result) {
+            result.style.display = "block";
+            result.innerHTML = `
+                <strong>Dashboard created.</strong>
+                <ol>
+                    <li>Open your AI account in this Chrome profile.</li>
+                    <li>Use the Claude or ChatGPT shortcut in the header.</li>
+                    <li>After the usage page loads, your card appears automatically.</li>
+                </ol>
+                <div style="margin-top:8px;">Sync bin: <code>${escapeHtmlSafe(binId)}</code></div>
+            `;
+        }
+        showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Dashboard created for ${escapeHtmlSafe(label)}.`);
+    } catch (err) {
+        console.error("[Onboarding] create own dashboard failed:", err);
+        if (result) {
+            result.style.display = "block";
+            result.innerHTML = `<strong>Could not create dashboard.</strong><br>Check your connection and try again.`;
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> Create my dashboard`;
+        }
+    }
+}
+
+function buildInviteUrlFromConfig(config, fromLabel) {
+    if (!config || !config.enabled || !config.pairingKey || !config.binId) return "";
+    const hostUrl = DEFAULT_PWA_HOST.replace(/\/+$/, "");
+    const params = new URLSearchParams({
+        key: config.pairingKey,
+        bin: config.binId,
+        join: "1",
+        from: fromLabel || "Dashboard Admin"
+    });
+    if (config.provider) params.set("provider", config.provider);
+    return `${hostUrl}/index.html?${params.toString()}`;
+}
+
+async function buildAccountInviteFromOnboarding() {
+    const result = document.getElementById("onboarding-account-result");
+    const nameInput = document.getElementById("onboarding-account-name");
+    const providerSelect = document.getElementById("onboarding-account-provider");
+    const targetName = (nameInput && nameInput.value.trim()) || "New account";
+    const provider = providerSelect ? providerSelect.value : "chatgpt";
+
+    const res = await dbGetPromise(["lt_sync_config", "lt_profile_label"]);
+    const inviteUrl = buildInviteUrlFromConfig(res.lt_sync_config, res.lt_profile_label || state.myProfileLabel || "Dashboard Admin");
+    if (!inviteUrl) {
+        if (result) {
+            result.style.display = "block";
+            result.innerHTML = `<strong>No active sync yet.</strong><br>First create your own dashboard or generate a pairing code in Settings.`;
+        }
+        return;
+    }
+
+    const providerUrl = getProviderLoginUrl(provider);
+    if (result) {
+        result.style.display = "block";
+        result.innerHTML = `
+            <strong>Invite prepared for ${escapeHtmlSafe(targetName)}.</strong>
+            <ol>
+                <li>Create or open a separate Chrome profile for this account.</li>
+                <li>Load or reload the Usage Dashboard extension in that profile.</li>
+                <li>Open this invite link and accept it:</li>
+            </ol>
+            <code>${escapeHtmlSafe(inviteUrl)}</code>
+            <div class="onboarding-actions" style="margin-top:10px;">
+                <button type="button" id="btn-copy-onboarding-invite" class="btn-secondary"><i class="fa-solid fa-copy"></i> Copy invite</button>
+                ${providerUrl ? `<a class="btn-secondary onboarding-doc-link" href="${providerUrl}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square"></i> Open ${escapeHtmlSafe(PROVIDER_META[provider]?.name || provider)}</a>` : ""}
+            </div>
+            <div style="margin-top:8px;color:var(--text-muted);">After the first scrape, use the ✎ icon on the card to label it "${escapeHtmlSafe(targetName)}".</div>
+        `;
+        const copyBtn = document.getElementById("btn-copy-onboarding-invite");
+        if (copyBtn) copyBtn.addEventListener("click", () => {
+            navigator.clipboard.writeText(inviteUrl)
+                .then(() => showToast(`<i class="fa-solid fa-copy"></i> Invite copied for ${escapeHtmlSafe(targetName)}.`));
+        });
+    }
 }
 
 // Houdt de checkboxes in Settings in sync met de GEDEELDE config (providersOff).

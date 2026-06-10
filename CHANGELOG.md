@@ -4,6 +4,24 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.25.0] - 2026-06-10
+
+### Added - Phase 7 onboarding
+- **Guided setup wizard** from the dashboard and Profiles & Connection sidebar.
+- Wizard routes:
+  - **Own dashboard**: creates a new sync dashboard through the existing provider layer.
+  - **Join dashboard**: accepts an existing invite link from the wizard.
+  - **Add account**: prepares an invite and next-step checklist for another person/account, such as `Sorin - ChatGPT`.
+- **ONBOARDING.md** added with step-by-step instructions for starting, joining, and adding accounts.
+
+### Changed
+- Getting-started banner now has a direct **Setup guide** action.
+- Profiles sidebar now has **Guided setup** next to **Add profile**.
+- GitHub Pages workflow publishes `ONBOARDING.md` with the PWA.
+- Service Worker cache and asset querystrings bumped to `0.25.0`.
+
+---
+
 ## [0.22.4] — 2026-06-10
 
 ### UI — "+" blok-knop verplaatst naar het profiel-dropdown menu

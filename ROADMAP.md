@@ -4,9 +4,10 @@ Forward-looking plan. Bevat visie, het kerninzicht dat de architectuur bepaalt,
 haalbaarheid (wat wel/niet kan), de gekozen richting en een gefaseerde uitwerking.
 Dit document is leidend voor de grote update; details kunnen per fase bijgesteld worden.
 
-> **Stand van zaken (v0.22.4):** Fase 1 grotendeels af. Fase 2 deels live. Fase 5 (labels +
+> **Stand van zaken (v0.25.0):** Fase 1 grotendeels af. Fase 2 deels live. Fase 5 (labels +
 > account-detectie) en Fase 6 (UI-herindeling: profiel-switcher in hoofdbalk, blokbeheer in
-> dropdown) zijn volledig opgeleverd. Firebase SSE-streaming actief (< 1s latency). Twee
+> dropdown) zijn volledig opgeleverd. Fase 7 onboarding-wizard + `ONBOARDING.md` is live.
+> Firebase SSE-streaming actief (< 1s latency). Twee
 > Chrome-profielen live getest en gekoppeld. Open: drag-to-reorder, profielgroepen, Fase 3 analyse.
 
 ---
@@ -127,4 +128,4 @@ Het project is in **beta** zolang de eigenaar niet expliciet besluit tot publiek
 
 ---
 
-*Status (v0.22.4): Fase 1 grotendeels af, Fase 2 deels live, Fase 5 + 6 volledig opgeleverd. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3).*
+*Status (v0.25.0): Fase 1 grotendeels af, Fase 2 deels live, Fase 5 + 6 volledig opgeleverd, Fase 7 onboarding live. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3), eventuele AES-GCM-migratie als aparte fase.*

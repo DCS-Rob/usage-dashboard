@@ -34,7 +34,7 @@ jobs:
       - name: Assemble PWA site
         run: |
           mkdir -p _site/assets _site/lib
-          cp index.html app.js style.css sw.js manifest.webmanifest _site/
+          cp index.html app.js style.css sw.js manifest.webmanifest ONBOARDING.md _site/
           cp assets/*.svg _site/assets/
           cp lib/*.js _site/lib/
           touch _site/.nojekyll
