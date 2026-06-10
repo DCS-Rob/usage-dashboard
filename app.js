@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.22.0";
+const APP_VERSION = "0.22.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -823,13 +823,22 @@ function renderBlockFabMenu() {
     const ctx = getCurrentProfileContext();
     const pid = ctx.profileId;
 
-    // Verborgen blokken die data hebben of expliciet toegevoegd zijn
-    const hiddenWithData = PROVIDER_ORDER.filter(p => {
-        const hidden = isBlockHidden(pid, p) || !isBlockVisible(p);
-        const dataPresent = hasProviderData(p, ctx.syncStatus, ctx.logs);
-        const shown = isBlockAdded(pid, p);
-        return hidden && (dataPresent || shown);
+    // Verzamel verborgen blokken uit alle zichtbare profielen (eigen + cloud)
+    const allProfileMap = { ...(state.cloudProfiles || {}) };
+    if (state.myProfileId) {
+        allProfileMap[state.myProfileId] = allProfileMap[state.myProfileId] || { label: state.myProfileLabel || "This profile", syncStatus: state.syncStatus };
+    }
+    const hiddenItems = []; // { pid, provider, label }
+    Object.entries(allProfileMap).forEach(([id, profile]) => {
+        PROVIDER_ORDER.forEach(p => {
+            if (!isBlockVisible(p)) return; // globaal uit → aparte toggle in Settings
+            const present = hasProviderData(p, profile.syncStatus || {}, []) || isBlockAdded(id, p);
+            if (!present) return;
+            if (isBlockHidden(id, p)) hiddenItems.push({ pid: id, provider: p, label: profile.label || id });
+        });
     });
+    // Dedupliceer voor single-profiel weergave (pid kan eigen id zijn)
+    const hiddenWithData = hiddenItems;
 
     // Badge bijhouden op de FAB-knop
     if (badge) {
@@ -857,13 +866,16 @@ function renderBlockFabMenu() {
 
     if (hiddenWithData.length > 0) {
         html += `<div class="fab-menu-section-title" style="margin-top:4px;"><i class="fa-solid fa-eye"></i> Restore hidden</div>`;
-        html += hiddenWithData.map(p =>
-            `<button class="add-block-item fab-restore-item" data-restore-provider="${p}">
-                <span class="block-toggle-dot" style="background:var(--color-${PROVIDER_META[p].cls});"></span>
-                <span style="flex:1;text-align:left;">${PROVIDER_META[p].name}</span>
+        html += hiddenWithData.map((h, i) => {
+            const meta = PROVIDER_META[h.provider];
+            const showProfile = hiddenWithData.filter(x => x.provider === h.provider).length > 1;
+            const label = showProfile ? `${escapeHtmlSafe(h.label)} · ${meta.name}` : meta.name;
+            return `<button class="add-block-item fab-restore-item" data-restore-idx="${i}">
+                <span class="block-toggle-dot" style="background:var(--color-${meta.cls});"></span>
+                <span style="flex:1;text-align:left;">${label}</span>
                 <span style="font-size:0.72rem;color:#86efac;"><i class="fa-solid fa-rotate-left"></i> Restore</span>
-            </button>`
-        ).join("");
+            </button>`;
+        }).join("");
     }
 
     menu.innerHTML = html;
@@ -874,9 +886,11 @@ function renderBlockFabMenu() {
             menu.style.display = "none";
         });
     });
-    menu.querySelectorAll(".fab-restore-item[data-restore-provider]").forEach(b => {
+    menu.querySelectorAll(".fab-restore-item[data-restore-idx]").forEach(b => {
         b.addEventListener("click", () => {
-            clearBlockOverride(pid, b.getAttribute("data-restore-provider"));
+            const item = hiddenWithData[parseInt(b.getAttribute("data-restore-idx"))];
+            if (!item) return;
+            clearBlockOverride(item.pid, item.provider);
             applyBlockVisibility();
             renderMultiProfileCards();
             menu.style.display = "none";
@@ -903,6 +917,45 @@ function initBlockFab() {
 // Delegeert naar renderBlockFabMenu zodat bestaande aanroepplaatsen blijven werken.
 function renderStaticRestoreBar(profileId, providers) {
     renderBlockFabMenu();
+}
+
+// Toont welk profiel of welke weergave actief is boven de kaarten-grid.
+function updateProfileContextBar() {
+    const bar = document.getElementById("profile-context-bar");
+    if (!bar) return;
+
+    const allProfileMap = { ...(state.cloudProfiles || {}) };
+    if (state.myProfileId) {
+        allProfileMap[state.myProfileId] = allProfileMap[state.myProfileId] || { label: state.myProfileLabel || "This profile", lastSeen: Date.now() };
+    }
+    const profileCount = Object.keys(allProfileMap).length;
+
+    // Verberg de balk als er maar één profiel is (context is vanzelfsprekend)
+    if (profileCount <= 1) { bar.style.display = "none"; return; }
+
+    const pid = state.selectedProfileId;
+    let html = "";
+
+    if (!pid) {
+        // "All profiles" weergave
+        const onlineCount = Object.values(allProfileMap).filter(p => (Date.now() - (p.lastSeen || 0)) < 10 * 60 * 1000).length;
+        html = `<i class="fa-solid fa-layer-group" style="opacity:0.5;font-size:0.75rem;"></i>
+            <span class="pcb-name">All profiles</span>
+            <span class="pcb-sep">·</span>
+            <span>${profileCount} profiles${onlineCount > 0 ? `, ${onlineCount} online` : ""}</span>`;
+    } else {
+        const profile = allProfileMap[pid] || {};
+        const onlineSt = profileOnlineStatus(profile.lastSeen);
+        const isMe = pid === state.myProfileId;
+        html = `<span class="pcb-dot" style="background:${onlineSt.color};"></span>
+            <span class="pcb-name">${escapeHtmlSafe(profile.label || pid)}</span>
+            ${isMe ? `<span class="pcb-sep">·</span><span><i class="fa-solid fa-desktop" style="font-size:0.7rem;opacity:0.6;"></i> this device</span>` : ""}
+            <span class="pcb-sep">·</span>
+            <span>${onlineSt.label}</span>`;
+    }
+
+    bar.innerHTML = html;
+    bar.style.display = "flex";
 }
 
 // Sidebar open/sluit logica voor het profielen-zijpaneel.
@@ -2990,6 +3043,8 @@ function renderProfileBar() {
         // Vul ook het naam-veld in het add-panel in
         const nameInput = document.getElementById("dashboard-profile-name");
         if (nameInput && myLabel && myLabel !== "This profile") nameInput.value = myLabel;
+
+        updateProfileContextBar();
     });
 }
 
@@ -3446,16 +3501,8 @@ function renderMultiProfileCards() {
         </div>`;
     }
 
-    // Restore-balk voor lokaal verborgen blokken
-    let restoreBar = "";
-    if (hiddenRestore.length > 0) {
-        restoreBar = `<div class="mp-restore-bar" style="grid-column:1/-1;">
-            <span style="color:var(--text-muted); font-size:0.78rem; margin-right:6px;"><i class="fa-solid fa-eye-slash"></i> Hidden:</span>
-            ${hiddenRestore.map(h => `<button class="mp-restore-chip" data-mp-restore-pid="${h.pid}" data-mp-restore-provider="${h.provider}">${escapeHtmlSafe(h.label)} · ${PROVIDER_META[h.provider].name} <i class="fa-solid fa-rotate-left"></i></button>`).join("")}
-        </div>`;
-    }
-
-    multiGrid.innerHTML = restoreBar + cards;
+    multiGrid.innerHTML = cards;
+    renderBlockFabMenu();
 
     // Hide-knoppen
     multiGrid.querySelectorAll(".mp-hide").forEach(btn => {
@@ -3493,13 +3540,6 @@ function renderMultiProfileCards() {
                 if (ev.key === "Escape") cancel();
             });
             input.addEventListener("blur", commit);
-        });
-    });
-    // Restore-chips
-    multiGrid.querySelectorAll(".mp-restore-chip").forEach(btn => {
-        btn.addEventListener("click", () => {
-            clearBlockOverride(btn.getAttribute("data-mp-restore-pid"), btn.getAttribute("data-mp-restore-provider"));
-            renderMultiProfileCards();
         });
     });
 }

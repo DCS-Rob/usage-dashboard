@@ -4,6 +4,20 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.22.1] — 2026-06-10
+
+### Bugfix / verbetering — Hidden-balk weg, profielindicator toegevoegd
+
+- **"Hidden:"-balk verwijderd:** de restore-chips die boven de multi-profiel kaarten stonden zijn verplaatst naar het "+" FAB-menu (badge toont het aantal). Het "+" menu doorzoekt nu ook alle cloud-profielen op verborgen blokken, niet alleen het actief geselecteerde profiel. Bij meerdere profielen met hetzelfde blok verborgen toont de naam de profielnaam als prefix (`Personal · Claude Pro`).
+- **Profielindicator:** bij 2+ profielen verschijnt een subtiele balk boven de kaarten. In de "All profiles"-weergave: `● All profiles · N profiles, X online`. Bij een specifiek profiel: statusstip + profielnaam + "this device" indicator + online-status. Bij één profiel blijft de balk verborgen.
+
+### Technisch
+- `index.html`: `#profile-context-bar` toegevoegd boven de FAB-wrapper.
+- `style.css`: `.profile-context-bar` + `.pcb-*` klassen.
+- `app.js`: `renderMultiProfileCards` — restore-balk verwijderd, roept `renderBlockFabMenu()` aan. `renderBlockFabMenu` — scant alle profielen voor verborgen blokken. `updateProfileContextBar()` — nieuwe functie, aangeroepen vanuit `renderProfileBar`.
+
+---
+
 ## [0.22.0] — 2026-06-10
 
 ### Nieuw — UI-herindeling: profielen-zijpaneel + "+" blok-menu (Fase 6)
