@@ -2,24 +2,23 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.18.0**
+**Huidige versie: 0.22.4**
 
 ---
 
 ## 📍 Huidige staat (sessie-handoff)
 
-Recente werk-arc (v0.14 → v0.18), allemaal gepusht en live op GitHub Pages:
+Werk-arc v0.19 → v0.22.4, allemaal gepusht en live op GitHub Pages:
 
-- **Dynamisch kaartsysteem** — geen vaste 3 provider-cards meer. In "All profiles" één losse kaart per **(profiel × abonnement)** met volledige pace-balken; bij één profiel de rijke statische kaarten. Provider­kleuren behouden (Claude oranje, ChatGPT groen, Gemini blauw).
-- **Auto-zichtbaarheid** — een kaart verschijnt alleen als dat profiel er data voor heeft; "Add a usage block"-knop opent de inlog/usage-pagina; ✕-knop verwijdert een kaart.
-- **Codex/maandlimiet** — geen apart blok; de maandelijkse limiet valt onder de groene ChatGPT-kaart (gratis/personal = maandelijks, betaald = 5h+weekly).
-- **v0.18.0 (belangrijkst):** data-verlies bug opgelost (app-side upload deed de bin platslaan zonder `profiles`) **én** dashboard-configuratie (blok tonen/verbergen/toevoegen + globale Visible Blocks) synct nu over álle profielen via gedeelde `dashboardConfig` in de bin.
+- **Firebase SSE-streaming (v0.20.0)** — PWA en extensie-dashboard luisteren via realtime Server-Sent Events; data verschijnt < 1s na een scrape. 5-min backup-poll voor fallback.
+- **Reset-timer bugfix (v0.21.1)** — `content.js` berekent `resetSessionAbsoluteTs` bij het scrapen; timer klopt exact op elk apparaat ongeacht sync-vertraging.
+- **"Tab sync" fix (v0.21.1)** — toont nu `lastSynced` (echte scrape) i.p.v. `lastSeen` (heartbeat).
+- **Aangepaste labels + account-detectie (v0.21.0, Fase 5)** — ✎-knop per kaart voor eigen label (bijv. "Kevin — werk"); e-mailadres/accountnaam automatisch gedetecteerd als subtitel op claude.ai en chatgpt.com. Labels opgeslagen in gedeelde `dashboardConfig.labels`.
+- **UI-herindeling (v0.22.x, Fase 6)** — profielenbalk uit het hoofdscherm; nu één compacte dropdown-knop `[● Rob-DCS ▼]` in de hoofdbalk. Klikken toont profiellijst (met online-status), "Add / restore blocks" (met badge voor verborgen blokken) en "Manage profiles" (opent zijpaneel). Geen losse "+" knop of contextbalk boven de kaarten meer.
 
-**Geverifieerd** via lokale preview met gestubde sync-provider (config-schrijf behoudt profielen; tweede apparaat ziet toegevoegde/verborgen blokken; extensie-push wist niets meer). **Niet** end-to-end live getest met twee echte Chrome-profielen.
+**Live getest:** twee Chrome-profielen (Rob-DCS + Personal) succesvol gekoppeld via invite-link; beide zichtbaar in het dropdown (2 online).
 
-**Actie voor de gebruiker:** herlaad de extensie in **beide** Chrome-profielen (`chrome://extensions` → 🔄) naar v0.18.0 — anders blijft een oud profiel de bin nog platslaan. Daarna: voeg op het ene profiel een blok toe → na ≤60s of een refresh zichtbaar op het andere.
-
-**Open punten (ROADMAP):** drag-to-reorder van kaarten, profielgroepen, analyse-historie. Mogelijke vervolgvraag van de gebruiker: of de Codex-scrape op een **gratis** ChatGPT-account het maandcijfer wel correct van de juiste pagina haalt (afstemmen op screenshot indien nodig).
+**Open punten:** drag-to-reorder van kaarten, profielgroepen, analyse-database (Fase 3).
 
 ---
 
@@ -275,6 +274,14 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.22.4** | 2026-06-10 | "+" blok-knop samengevoegd in profiel-dropdown; header-label toont "All profiles" zonder online-telling. |
+| **0.22.3** | 2026-06-10 | Profielindicator verplaatst naar hoofdbalk als `[● Naam ▼]` dropdown; aparte contextbalk boven kaarten verwijderd. |
+| **0.22.0–0.22.2** | 2026-06-10 | **Fase 6 UI-herindeling:** profielen naar zijpaneel, blokken naar "+" FAB-menu; iteratieve samenvoegingen. |
+| **0.21.1** | 2026-06-10 | Bugfix: reset-timer gebruikt absolute timestamp (`resetSessionAbsoluteTs`); "Tab sync" toont `lastSynced` i.p.v. heartbeat. |
+| **0.21.0** | 2026-06-10 | **Fase 5:** ✎-knop voor aangepaste kaartlabels (gesynct via `dashboardConfig.labels`); account-detectie (e-mail/naam subtitel) op claude.ai + chatgpt.com. |
+| **0.20.1** | 2026-06-10 | Bugfix: reset-timer corrigeerde verstreken tijd niet na scrape (elapsed-correctie als workaround, vervangen in v0.21.1). |
+| **0.20.0** | 2026-06-10 | Firebase SSE-streaming voor PWA (< 1s latency) + extensie-dashboard; `processRawCloudDoc` gedeeld tussen poll- en stream-paden. |
+| **0.19.0** | 2026-06-10 | background.js: throttle 30s, heartbeat `lastSeen`, scrape-error status; `profileOnlineStatus`; refresh-status-bar in header. |
 | **0.18.0** | 2026-06-02 | **Data-verlies fix:** app-side cloud-upload deed read-modify-write i.p.v. de bin platslaan (wiste andere profielen). **Dashboard-config (blok tonen/verbergen/toevoegen + globale Visible Blocks) synct nu over profielen** via gedeelde `dashboardConfig` in de bin i.p.v. apparaat-lokale `localStorage`. |
 | **0.17.0** | 2026-06-02 | Maandlimiet onder ChatGPT (groen) i.p.v. apart paars Codex-blok; ChatGPT-card toont 5h+Weekly (betaald) of Maandelijks (gratis). Duidelijke ✕-verwijderknop op alle cards. "Add a usage block"-knop opent de inlog/usage-pagina. Tabs-foutmelding (`runtime.lastError`) opgelost. |
 | **0.16.0** | 2026-06-02 | Auto-zichtbaarheid: blokken verschijnen alleen bij data (geen Gemini-blok zonder gebruik). Verberg-knop (oogje) + herstel-balk óók in enkel-profiel weergave. Per-profiel verbergen werkt consistent door in "All profiles". |
