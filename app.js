@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.21.1";
+const APP_VERSION = "0.22.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -815,33 +815,116 @@ function renderAddBlockPanel() {
     });
 }
 
-function initAddBlockButton() {
-    const btn = document.getElementById("btn-add-block");
-    const panel = document.getElementById("add-block-panel");
-    if (!btn || !panel) return;
-    btn.addEventListener("click", () => {
-        const open = panel.style.display !== "none";
-        if (open) { panel.style.display = "none"; return; }
-        renderAddBlockPanel();
-        panel.style.display = "block";
+// Block FAB (+ knop rechtsboven de grid): voegt blokken toe én herstelt verborgen blokken.
+function renderBlockFabMenu() {
+    const menu = document.getElementById("block-fab-menu");
+    const badge = document.getElementById("block-fab-hidden-badge");
+    if (!menu) return;
+    const ctx = getCurrentProfileContext();
+    const pid = ctx.profileId;
+
+    // Verborgen blokken die data hebben of expliciet toegevoegd zijn
+    const hiddenWithData = PROVIDER_ORDER.filter(p => {
+        const hidden = isBlockHidden(pid, p) || !isBlockVisible(p);
+        const dataPresent = hasProviderData(p, ctx.syncStatus, ctx.logs);
+        const shown = isBlockAdded(pid, p);
+        return hidden && (dataPresent || shown);
+    });
+
+    // Badge bijhouden op de FAB-knop
+    if (badge) {
+        if (hiddenWithData.length > 0) {
+            badge.textContent = hiddenWithData.length;
+            badge.style.display = "flex";
+        } else {
+            badge.style.display = "none";
+        }
+    }
+
+    let html = `<div class="fab-menu-section-title"><i class="fa-solid fa-plus"></i> Add a block</div>`;
+    html += PROVIDER_ORDER.map(p => {
+        const meta = PROVIDER_META[p];
+        const has  = hasProviderData(p, ctx.syncStatus, ctx.logs);
+        const shown  = isBlockAdded(pid, p);
+        const hidden = isBlockHidden(pid, p) || !isBlockVisible(p);
+        const status = hidden ? "Hidden" : (has || shown ? "Active" : "Not loaded");
+        return `<button class="add-block-item" data-add-provider="${p}">
+            <span class="block-toggle-dot" style="background:var(--color-${meta.cls});"></span>
+            <span style="flex:1;text-align:left;">${meta.name}</span>
+            <span style="font-size:0.72rem;color:var(--text-muted);">${status}</span>
+        </button>`;
+    }).join("");
+
+    if (hiddenWithData.length > 0) {
+        html += `<div class="fab-menu-section-title" style="margin-top:4px;"><i class="fa-solid fa-eye"></i> Restore hidden</div>`;
+        html += hiddenWithData.map(p =>
+            `<button class="add-block-item fab-restore-item" data-restore-provider="${p}">
+                <span class="block-toggle-dot" style="background:var(--color-${PROVIDER_META[p].cls});"></span>
+                <span style="flex:1;text-align:left;">${PROVIDER_META[p].name}</span>
+                <span style="font-size:0.72rem;color:#86efac;"><i class="fa-solid fa-rotate-left"></i> Restore</span>
+            </button>`
+        ).join("");
+    }
+
+    menu.innerHTML = html;
+
+    menu.querySelectorAll(".add-block-item[data-add-provider]").forEach(b => {
+        b.addEventListener("click", () => {
+            openProviderLogin(b.getAttribute("data-add-provider"));
+            menu.style.display = "none";
+        });
+    });
+    menu.querySelectorAll(".fab-restore-item[data-restore-provider]").forEach(b => {
+        b.addEventListener("click", () => {
+            clearBlockOverride(pid, b.getAttribute("data-restore-provider"));
+            applyBlockVisibility();
+            renderMultiProfileCards();
+            menu.style.display = "none";
+        });
     });
 }
 
-// Herstel-balk boven de enkel-profiel grid voor handmatig verborgen blokken.
-function renderStaticRestoreBar(profileId, providers) {
-    const bar = document.getElementById("static-restore-bar");
-    if (!bar) return;
-    if (!providers.length) { bar.style.display = "none"; bar.innerHTML = ""; return; }
-    bar.style.display = "flex";
-    bar.innerHTML = `<span style="color:var(--text-muted);font-size:0.78rem;margin-right:6px;"><i class="fa-solid fa-eye-slash"></i> Hidden in this profile:</span>` +
-        providers.map(p => `<button class="mp-restore-chip" data-restore-provider="${p}">${PROVIDER_META[p].name} <i class="fa-solid fa-rotate-left"></i></button>`).join("");
-    bar.querySelectorAll(".mp-restore-chip").forEach(btn => {
-        btn.addEventListener("click", () => {
-            clearBlockOverride(profileId, btn.getAttribute("data-restore-provider"));
-            applyBlockVisibility();
-            renderMultiProfileCards();
-        });
+function initBlockFab() {
+    const btn  = document.getElementById("btn-block-fab");
+    const menu = document.getElementById("block-fab-menu");
+    if (!btn || !menu) return;
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = menu.style.display !== "none";
+        if (open) { menu.style.display = "none"; return; }
+        renderBlockFabMenu();
+        menu.style.display = "block";
     });
+    document.addEventListener("click", (e) => {
+        if (!btn.contains(e.target) && !menu.contains(e.target)) menu.style.display = "none";
+    });
+}
+
+// Delegeert naar renderBlockFabMenu zodat bestaande aanroepplaatsen blijven werken.
+function renderStaticRestoreBar(profileId, providers) {
+    renderBlockFabMenu();
+}
+
+// Sidebar open/sluit logica voor het profielen-zijpaneel.
+function initProfilesSidebar() {
+    const triggerBtn = document.getElementById("btn-profiles-sidebar");
+    const sidebar    = document.getElementById("profiles-sidebar");
+    const overlay    = document.getElementById("profiles-sidebar-overlay");
+    const closeBtn   = document.getElementById("btn-close-sidebar");
+    if (!triggerBtn || !sidebar) return;
+
+    function openSidebar() {
+        sidebar.classList.add("open");
+        if (overlay) overlay.classList.add("open");
+    }
+    function closeSidebar() {
+        sidebar.classList.remove("open");
+        if (overlay) overlay.classList.remove("open");
+    }
+
+    triggerBtn.addEventListener("click", openSidebar);
+    if (closeBtn)  closeBtn.addEventListener("click", closeSidebar);
+    if (overlay)   overlay.addEventListener("click", closeSidebar);
 }
 
 // Houdt de checkboxes in Settings in sync met de GEDEELDE config (providersOff).
@@ -2070,10 +2153,11 @@ function setupEventListeners() {
         });
     });
 
-    // K2. Visible-block toggles + per-card verberg-knoppen + blok-toevoegen
+    // K2. Visible-block toggles + per-card verberg-knoppen + blok-toevoegen FAB + sidebar
     initVisibleBlockToggles();
     addStaticHideButtons();
-    initAddBlockButton();
+    initBlockFab();
+    initProfilesSidebar();
 
     // L. Settings Import / Export JSON
     document.getElementById("btn-export-data").addEventListener("click", () => {
@@ -2812,6 +2896,8 @@ function renderProfileBar() {
 
         if (!hasSyncConfig && profileIds.length === 0) {
             bar.style.display = "none";
+            const badge = document.getElementById("sidebar-online-badge");
+            if (badge) badge.style.display = "none";
             return;
         }
         bar.style.display = "flex";
@@ -2858,6 +2944,21 @@ function renderProfileBar() {
         });
 
         tabsContainer.innerHTML = html;
+
+        // Sidebar-badge: aantal online profielen (lastSeen < 10 min)
+        const badge = document.getElementById("sidebar-online-badge");
+        if (badge) {
+            const onlineCount = allIds.filter(id => {
+                const age = now - (allProfiles[id]?.lastSeen || 0);
+                return age < 10 * 60 * 1000;
+            }).length;
+            if (onlineCount > 0) {
+                badge.textContent = onlineCount;
+                badge.style.display = "flex";
+            } else {
+                badge.style.display = "none";
+            }
+        }
 
         // Click listeners voor tab-selectie
         tabsContainer.querySelectorAll(".profile-tab").forEach(btn => {

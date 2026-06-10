@@ -4,6 +4,21 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.22.0] — 2026-06-10
+
+### Nieuw — UI-herindeling: profielen-zijpaneel + "+" blok-menu (Fase 6)
+
+- **Profielen-zijpaneel:** de profielenbalk verdwijnt uit het hoofdscherm. Een nieuw uitklapbaar zijpaneel (rechterzijde) bevat de profielenlijst met status-dots, de "Add profile"-knop en het invite-paneel. Het tandwiel-icoon in de header (nu een gebruikers-icoon met badge) opent het paneel; klikken op de overlay of de sluitknop sluit het. De badge toont het aantal online profielen (lastSeen < 10 min).
+- **Header opgeschoond:** de environment-indicator ("Extension"/"PWA") en de deploy-sync-indicator ("PWA Check") zijn verplaatst naar de voettekst van het zijpaneel. De header bevat nu uitsluitend: logo, sync-status, navigatietabs, refresh-knop en het profiel-dropdownmenu.
+- **"+" blok-menu:** de aparte "Add a usage block"-knop en de restore-chips-balk zijn samengevoegd tot één kleine "+"-knop rechts boven de kaarten-grid. Klikken opent een dropdown-menu met twee secties: "Add a block" (alle providers met hun status) en "Restore hidden" (verborgen blokken met data). De badge op de knop toont het aantal verborgen blokken.
+
+### Technisch
+- `index.html`: sidebar HTML toegevoegd; profile-bar, add-profile-panel, static-restore-bar en add-block-row verplaatst/vervangen; hamburger-knop + block-fab-wrapper toegevoegd.
+- `style.css`: nieuwe klassen `.profiles-sidebar`, `.sidebar-overlay`, `.sidebar-hamburger-btn`, `.sidebar-badge`, `.block-fab-wrapper`, `.block-fab-btn`, `.block-fab-menu`, `.block-fab-badge`, `.fab-menu-section-title`.
+- `app.js`: `initProfilesSidebar()`, `initBlockFab()`, `renderBlockFabMenu()` toegevoegd; `renderStaticRestoreBar()` delegeert naar `renderBlockFabMenu()`; `renderProfileBar()` werkt sidebar-badge bij.
+
+---
+
 ## [0.21.1] — 2026-06-10
 
 ### Bugfix — Reset-timer en "Tab sync" correct gemaakt bij de bron
