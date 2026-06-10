@@ -4,6 +4,19 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.22.3] — 2026-06-10
+
+### UI — Profielindicator verplaatst naar de hoofdbalk
+
+De aparte profielindicator boven de kaarten (en de samengevoegde "FAB-row") zijn verwijderd. Het actieve profiel staat nu in de **hoofdbalk** als een subtiele dropdown-knop: statusstip + naam + chevron. Klikken opent een lijst van alle profielen (met online-status) plus een "Manage profiles" knop die het zijpaneel opent. Zo neemt profielcontext geen extra ruimte boven de kaarten meer in.
+
+### Technisch
+- `index.html`: `#btn-profiles-sidebar` en `#profile-context-bar` verwijderd; `#header-profile-switcher` met `#btn-profile-switcher` toegevoegd in de header.
+- `style.css`: `.header-profile-switcher`, `.profile-switcher-btn`, `.ps-status-dot`, `.ps-chevron`, `.profile-switcher-menu`, `.psm-*`-klassen toegevoegd.
+- `app.js`: `updateProfileContextBar()` herschreven naar header-button updater; `initHeaderProfileSwitcher()`, `renderPsmProfileList()` en `openProfilesSidebar()` toegevoegd; `initProfilesSidebar()` vereenvoudigd (geen trigger-knop meer nodig); `initHeaderProfileSwitcher()` aangeroepen vanuit init.
+
+---
+
 ## [0.22.2] — 2026-06-10
 
 ### UI — Profielindicator en "+" knop samengevoegd op één regel

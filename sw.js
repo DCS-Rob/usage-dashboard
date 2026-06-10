@@ -1,5 +1,5 @@
-const CACHE_NAME = 'usagedashboard-cache-v0.22.2';
-const APP_BUILD = '0.22.2';
+const CACHE_NAME = 'usagedashboard-cache-v0.22.3';
+const APP_BUILD = '0.22.3';
 
 // Beantwoord versievragen vanuit de page (voor de Build info-strip)
 self.addEventListener('message', (event) => {
@@ -13,8 +13,8 @@ self.addEventListener('message', (event) => {
 const ASSETS = [
   './',
   './index.html',
-  './style.css?v=0.22.2',
-  './app.js?v=0.22.2',
+  './style.css?v=0.22.3',
+  './app.js?v=0.22.3',
   './lib/chart.min.js',
   './assets/usage-dashboard-logo.svg',
   './assets/openai-badge.svg',

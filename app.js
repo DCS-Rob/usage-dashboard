@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.22.2";
+const APP_VERSION = "0.22.3";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -920,64 +920,131 @@ function renderStaticRestoreBar(profileId, providers) {
 }
 
 // Toont welk profiel of welke weergave actief is boven de kaarten-grid.
+// Werkt de profile-switcher knop in de header bij (label + statusstip).
 function updateProfileContextBar() {
-    const bar = document.getElementById("profile-context-bar");
-    if (!bar) return;
+    const dot   = document.getElementById("ps-status-dot");
+    const label = document.getElementById("ps-label");
+    if (!dot || !label) return;
 
     const allProfileMap = { ...(state.cloudProfiles || {}) };
     if (state.myProfileId) {
-        allProfileMap[state.myProfileId] = allProfileMap[state.myProfileId] || { label: state.myProfileLabel || "This profile", lastSeen: Date.now() };
+        allProfileMap[state.myProfileId] = {
+            label: state.myProfileLabel || "This profile",
+            lastSeen: Date.now(),
+            ...(allProfileMap[state.myProfileId] || {})
+        };
     }
-    const profileCount = Object.keys(allProfileMap).length;
-
-    // Verberg de balk als er maar één profiel is (context is vanzelfsprekend)
-    if (profileCount <= 1) { bar.style.display = "none"; return; }
-
+    const ids = Object.keys(allProfileMap);
     const pid = state.selectedProfileId;
-    let html = "";
 
-    if (!pid) {
-        // "All profiles" weergave
+    if (!pid || ids.length <= 1) {
+        // "All profiles" of enkel profiel
         const onlineCount = Object.values(allProfileMap).filter(p => (Date.now() - (p.lastSeen || 0)) < 10 * 60 * 1000).length;
-        html = `<i class="fa-solid fa-layer-group" style="opacity:0.5;font-size:0.75rem;"></i>
-            <span class="pcb-name">All profiles</span>
-            <span class="pcb-sep">·</span>
-            <span>${profileCount} profiles${onlineCount > 0 ? `, ${onlineCount} online` : ""}</span>`;
+        dot.style.background = "var(--color-gemini)";
+        label.textContent = ids.length > 1
+            ? `All profiles (${onlineCount} online)`
+            : (allProfileMap[ids[0]]?.label || "Dashboard");
     } else {
         const profile = allProfileMap[pid] || {};
         const onlineSt = profileOnlineStatus(profile.lastSeen);
-        const isMe = pid === state.myProfileId;
-        html = `<span class="pcb-dot" style="background:${onlineSt.color};"></span>
-            <span class="pcb-name">${escapeHtmlSafe(profile.label || pid)}</span>
-            ${isMe ? `<span class="pcb-sep">·</span><span><i class="fa-solid fa-desktop" style="font-size:0.7rem;opacity:0.6;"></i> this device</span>` : ""}
-            <span class="pcb-sep">·</span>
-            <span>${onlineSt.label}</span>`;
+        dot.style.background = onlineSt.color;
+        label.textContent = profile.label || pid;
     }
+}
 
-    bar.innerHTML = html;
-    bar.style.display = "flex";
+// Opent het profielen-zijpaneel vanuit code.
+function openProfilesSidebar() {
+    const sidebar = document.getElementById("profiles-sidebar");
+    const overlay = document.getElementById("profiles-sidebar-overlay");
+    if (sidebar) sidebar.classList.add("open");
+    if (overlay) overlay.classList.add("open");
+}
+
+// Header profile switcher dropdown.
+function initHeaderProfileSwitcher() {
+    const btn    = document.getElementById("btn-profile-switcher");
+    const menu   = document.getElementById("profile-switcher-menu");
+    const manage = document.getElementById("btn-psm-manage");
+    if (!btn || !menu) return;
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (menu.style.display !== "none") { menu.style.display = "none"; return; }
+        renderPsmProfileList();
+        menu.style.display = "block";
+    });
+    document.addEventListener("click", (e) => {
+        if (!btn.contains(e.target) && !menu.contains(e.target)) menu.style.display = "none";
+    });
+    if (manage) manage.addEventListener("click", () => {
+        menu.style.display = "none";
+        openProfilesSidebar();
+    });
+}
+
+function renderPsmProfileList() {
+    const list = document.getElementById("psm-profile-list");
+    if (!list) return;
+    const allProfileMap = { ...(state.cloudProfiles || {}) };
+    if (state.myProfileId) {
+        allProfileMap[state.myProfileId] = {
+            label: state.myProfileLabel || "This profile",
+            ...(allProfileMap[state.myProfileId] || {}),
+            lastSeen: allProfileMap[state.myProfileId]?.lastSeen || Date.now()
+        };
+    }
+    const ids = Object.keys(allProfileMap);
+    let html = "";
+
+    if (ids.length > 1) {
+        const allActive = !state.selectedProfileId ? "active" : "";
+        const onlineCount = Object.values(allProfileMap).filter(p => (Date.now() - (p.lastSeen || 0)) < 10 * 60 * 1000).length;
+        html += `<button class="psm-profile-item ${allActive}" data-psm-pid="all">
+            <span class="psm-dot" style="background:var(--color-gemini);"></span>
+            <span class="psm-name">All profiles</span>
+            <span style="font-size:0.68rem;color:var(--text-muted);">${onlineCount} online</span>
+        </button>`;
+    }
+    ids.forEach(id => {
+        const p = allProfileMap[id];
+        const onlineSt = profileOnlineStatus(p.lastSeen);
+        const isMe = id === state.myProfileId;
+        const active = state.selectedProfileId === id || (ids.length === 1 && !state.selectedProfileId) ? "active" : "";
+        html += `<button class="psm-profile-item ${active}" data-psm-pid="${id}">
+            <span class="psm-dot" style="background:${onlineSt.color};"></span>
+            <span class="psm-name">${escapeHtmlSafe(p.label || id)}</span>
+            ${isMe ? `<i class="fa-solid fa-desktop" style="font-size:0.65rem;opacity:0.5;flex-shrink:0;"></i>` : ""}
+        </button>`;
+    });
+
+    list.innerHTML = html;
+    list.querySelectorAll(".psm-profile-item[data-psm-pid]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const pid = btn.getAttribute("data-psm-pid");
+            state.selectedProfileId = (pid === "all") ? null : pid;
+            document.getElementById("profile-switcher-menu").style.display = "none";
+            renderProfileBar();
+            renderDashboardProgress();
+            applyBlockVisibility();
+            renderMultiProfileCards();
+            updateScraperStatusLabels();
+        });
+    });
 }
 
 // Sidebar open/sluit logica voor het profielen-zijpaneel.
 function initProfilesSidebar() {
-    const triggerBtn = document.getElementById("btn-profiles-sidebar");
-    const sidebar    = document.getElementById("profiles-sidebar");
-    const overlay    = document.getElementById("profiles-sidebar-overlay");
-    const closeBtn   = document.getElementById("btn-close-sidebar");
-    if (!triggerBtn || !sidebar) return;
+    const sidebar  = document.getElementById("profiles-sidebar");
+    const overlay  = document.getElementById("profiles-sidebar-overlay");
+    const closeBtn = document.getElementById("btn-close-sidebar");
+    if (!sidebar) return;
 
-    function openSidebar() {
-        sidebar.classList.add("open");
-        if (overlay) overlay.classList.add("open");
-    }
     function closeSidebar() {
         sidebar.classList.remove("open");
         if (overlay) overlay.classList.remove("open");
     }
-
-    triggerBtn.addEventListener("click", openSidebar);
-    if (closeBtn)  closeBtn.addEventListener("click", closeSidebar);
-    if (overlay)   overlay.addEventListener("click", closeSidebar);
+    if (closeBtn) closeBtn.addEventListener("click", closeSidebar);
+    if (overlay)  overlay.addEventListener("click", closeSidebar);
 }
 
 // Houdt de checkboxes in Settings in sync met de GEDEELDE config (providersOff).
@@ -2210,6 +2277,7 @@ function setupEventListeners() {
     initVisibleBlockToggles();
     addStaticHideButtons();
     initBlockFab();
+    initHeaderProfileSwitcher();
     initProfilesSidebar();
 
     // L. Settings Import / Export JSON

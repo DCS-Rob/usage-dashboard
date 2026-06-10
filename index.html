@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.22.2">
+    <link rel="stylesheet" href="style.css?v=0.22.3">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -166,11 +166,21 @@
                     <!-- Persistente refresh-statusbalk (aangevraagd → PC gezien → klaar / fout) -->
                     <div id="refresh-status-bar" class="refresh-status-bar" style="display:none;"></div>
 
-                    <!-- Profiles Sidebar Trigger -->
-                    <button id="btn-profiles-sidebar" class="sidebar-hamburger-btn" title="Profiles &amp; connection">
-                        <i class="fa-solid fa-users"></i>
-                        <span id="sidebar-online-badge" class="sidebar-badge" style="display:none;"></span>
-                    </button>
+                    <!-- Profile switcher dropdown -->
+                    <div class="header-profile-switcher" id="header-profile-switcher">
+                        <button id="btn-profile-switcher" class="profile-switcher-btn" title="Switch profile">
+                            <span id="ps-status-dot" class="ps-status-dot" style="background:rgba(255,255,255,0.2);"></span>
+                            <span id="ps-label">Dashboard</span>
+                            <i class="fa-solid fa-chevron-down ps-chevron"></i>
+                        </button>
+                        <div id="profile-switcher-menu" class="profile-switcher-menu" style="display:none;">
+                            <div id="psm-profile-list"></div>
+                            <div class="psm-divider"></div>
+                            <button id="btn-psm-manage" class="psm-manage-btn">
+                                <i class="fa-solid fa-sliders"></i> Manage profiles
+                            </button>
+                        </div>
+                    </div>
 
                     <!-- Profile Dropdown Section -->
                     <div class="profile-dropdown-wrapper">
@@ -239,16 +249,13 @@
                         </div>
                     </div>
 
-                    <!-- Profiel-context + block FAB op één regel -->
-                    <div class="profile-fab-row">
-                        <div id="profile-context-bar" class="profile-context-bar" style="display:none;"></div>
-                        <div class="block-fab-wrapper">
-                            <button id="btn-block-fab" class="block-fab-btn" title="Add or restore blocks">
-                                <i class="fa-solid fa-plus"></i>
-                                <span id="block-fab-hidden-badge" class="block-fab-badge" style="display:none;"></span>
-                            </button>
-                            <div id="block-fab-menu" class="block-fab-menu" style="display:none;"></div>
-                        </div>
+                    <!-- Block FAB: add / restore blocks -->
+                    <div class="block-fab-wrapper">
+                        <button id="btn-block-fab" class="block-fab-btn" title="Add or restore blocks">
+                            <i class="fa-solid fa-plus"></i>
+                            <span id="block-fab-hidden-badge" class="block-fab-badge" style="display:none;"></span>
+                        </button>
+                        <div id="block-fab-menu" class="block-fab-menu" style="display:none;"></div>
                     </div>
 
                     <div class="dashboard-grid">
@@ -959,6 +966,6 @@
     </aside>
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.22.2"></script>
+    <script src="app.js?v=0.22.3"></script>
 </body>
 </html>
