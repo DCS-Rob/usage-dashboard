@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.25.1";
+const APP_VERSION = "0.25.2";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -1654,32 +1654,14 @@ function renderDashboardProgress() {
             // Deduct 1% per new message sent after sync (heuristic)
             gptPct = Math.max(0, sync.pctRemaining5h - newLogs.length);
             
-            // Parse reset time (e.g. "Reset 13:54" or "Reset 13.54")
+            // Parse reset time (e.g. "Reset 13:54", "Reset 1:54 PM")
             if (sync.reset5h) {
-                const match = sync.reset5h.match(/(\d{1,2})[:.](\d{2})/);
-                if (match) {
-                    const targetHours = parseInt(match[1]);
-                    const targetMins = parseInt(match[2]);
-                    
-                    const timeNow = new Date();
-                    const target = new Date();
-                    target.setHours(targetHours, targetMins, 0, 0);
-                    
-                    let diffMs = target.getTime() - timeNow.getTime();
-                    // If target time is in the past by more than 30 mins, it must be for tomorrow
-                    if (diffMs < -30 * 60 * 1000) {
-                        target.setDate(target.getDate() + 1);
-                        diffMs = target.getTime() - timeNow.getTime();
-                    }
-                    
-                    diffMsForPace = diffMs;
-                    if (diffMs > 0) {
-                        gptTimerText = formatTimeMs(diffMs);
-                    } else {
-                        gptTimerText = "Reset voltooid (Herlaad tab)";
-                    }
+                const five = parseChatgpt5hTime(sync.reset5h, now);
+                if (five.timePct > 0) {
+                    diffMsForPace = (five.timePct / 100) * (5 * 60 * 60 * 1000);
+                    gptTimerText = five.timerText;
                 } else {
-                    gptTimerText = sync.reset5h; // Fallback to raw string
+                    gptTimerText = five.timerText === "Active" ? "Reset voltooid (Herlaad tab)" : five.timerText;
                 }
             } else {
                 gptTimerText = "Limit Active";
@@ -1748,24 +1730,8 @@ function renderDashboardProgress() {
     let weeklyTimePct = 0;
     let weeklyTimerText = "Fully Free";
     if (state.syncStatus.chatgpt && state.syncStatus.chatgpt.resetWeekly) {
-        const resetWeekly = state.syncStatus.chatgpt.resetWeekly;
-        const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11, mrt: 2, mei: 4, okt: 9 };
-        const match = resetWeekly.match(/(\d{1,2})\s*([a-z]+)\s*(\d{4})?[\s,]+(?:om|at|op|on)?[\s,]*(\d{1,2})[:.](\d{2})/i);
-        if (match) {
-            const day = parseInt(match[1]);
-            const monthName = match[2].toLowerCase().substring(0, 3);
-            const year = match[3] ? parseInt(match[3]) : new Date().getFullYear();
-            const hours = parseInt(match[4]);
-            const mins = parseInt(match[5]);
-            const month = months[monthName] !== undefined ? months[monthName] : 4;
-            const targetDate = new Date(year, month, day, hours, mins, 0, 0);
-            
-            const diffMs = targetDate.getTime() - now;
-            if (diffMs > 0) {
-                weeklyTimePct = (diffMs / (7 * 24 * 60 * 60 * 1000)) * 100;
-                weeklyTimerText = formatWeeklyTimeMs(diffMs);
-            }
-        }
+        const wk = parseDateResetTime(state.syncStatus.chatgpt.resetWeekly, now, 7 * 24 * 60 * 60 * 1000);
+        if (wk.timePct > 0) { weeklyTimePct = wk.timePct; weeklyTimerText = wk.timerText; }
     }
     
     if (weeklyTimePct === 0) {
@@ -3597,10 +3563,15 @@ function parseClaudeWeeklyTime(resetWeekly, now) {
 function parseChatgpt5hTime(reset5h, now) {
     let timePct = 0, timerText = "Active";
     if (!reset5h) return { timePct, timerText };
-    const match = reset5h.match(/(\d{1,2})[:.](\d{2})/);
+    const match = reset5h.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/i);
     if (!match) { return { timePct, timerText: reset5h }; }
+    let hours = parseInt(match[1]);
+    const mins = parseInt(match[2]);
+    const ampm = (match[3] || "").toLowerCase();
+    if (ampm === "pm" && hours !== 12) hours += 12;
+    if (ampm === "am" && hours === 12) hours = 0;
     const target = new Date();
-    target.setHours(parseInt(match[1]), parseInt(match[2]), 0, 0);
+    target.setHours(hours, mins, 0, 0);
     let diffMs = target.getTime() - now;
     if (diffMs < -30 * 60 * 1000) { target.setDate(target.getDate() + 1); diffMs = target.getTime() - now; }
     if (diffMs > 0) { timePct = Math.min(100, (diffMs / (5 * 60 * 60 * 1000)) * 100); timerText = formatTimeMs(diffMs); }
@@ -3612,18 +3583,34 @@ function parseDateResetTime(resetStr, now, windowMs) {
     let timePct = 0, timerText = (resetStr || "").replace(/^(?:resets?|herstelt)\s*/i, "").trim() || "—";
     if (!resetStr) return { timePct, timerText };
     const months = { jan: 0, feb: 1, mar: 2, mrt: 2, apr: 3, may: 4, mei: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, okt: 9, nov: 10, dec: 11 };
-    const m = resetStr.match(/(\d{1,2})\s*([a-z]+)\.?\s*(\d{4})?(?:[\s,]+(?:om|at|op|on)?[\s,]*(\d{1,2})[:.](\d{2}))?/i);
-    if (m) {
-        const day = parseInt(m[1]);
-        const monthName = (m[2] || "").toLowerCase().substring(0, 3);
-        if (months[monthName] !== undefined) {
-            const year = m[3] ? parseInt(m[3]) : new Date().getFullYear();
-            const hours = m[4] ? parseInt(m[4]) : 0;
-            const mins = m[5] ? parseInt(m[5]) : 0;
-            const target = new Date(year, months[monthName], day, hours, mins, 0, 0);
-            const diffMs = target.getTime() - now;
-            if (diffMs > 0) { timePct = Math.min(100, (diffMs / windowMs) * 100); timerText = formatWeeklyTimeMs(diffMs); }
-        }
+
+    let day, monthName, year, hours = 0, mins = 0, ampm = "";
+
+    // Formaat A: dag-eerst "12 Jun 2026 13:49" of "12 jun 2026 om 13:49"
+    const mA = resetStr.match(/(\d{1,2})\s*([a-z]+)\.?\s*(\d{4})?(?:[\s,]+(?:om|at|op|on)?[\s,]*(\d{1,2})[:.](\d{2})\s*(am|pm)?)?/i);
+    // Formaat B: maand-eerst "Jun 12, 2026 3:49 PM" (US-formaat)
+    const mB = resetStr.match(/([a-z]+)\s+(\d{1,2}),?\s*(\d{4})?[\s,]+(\d{1,2})[:.](\d{2})\s*(am|pm)?/i);
+
+    if (mB && months[(mB[1] || "").toLowerCase().substring(0, 3)] !== undefined) {
+        monthName = (mB[1] || "").toLowerCase().substring(0, 3);
+        day = parseInt(mB[2]);
+        year = mB[3] ? parseInt(mB[3]) : new Date().getFullYear();
+        hours = parseInt(mB[4]); mins = parseInt(mB[5]);
+        ampm = (mB[6] || "").toLowerCase();
+    } else if (mA) {
+        day = parseInt(mA[1]);
+        monthName = (mA[2] || "").toLowerCase().substring(0, 3);
+        year = mA[3] ? parseInt(mA[3]) : new Date().getFullYear();
+        hours = mA[4] ? parseInt(mA[4]) : 0; mins = mA[5] ? parseInt(mA[5]) : 0;
+        ampm = (mA[6] || "").toLowerCase();
+    }
+
+    if (day && monthName && months[monthName] !== undefined) {
+        if (ampm === "pm" && hours !== 12) hours += 12;
+        if (ampm === "am" && hours === 12) hours = 0;
+        const target = new Date(year, months[monthName], day, hours, mins, 0, 0);
+        const diffMs = target.getTime() - now;
+        if (diffMs > 0) { timePct = Math.min(100, (diffMs / windowMs) * 100); timerText = formatWeeklyTimeMs(diffMs); }
     }
     return { timePct, timerText };
 }

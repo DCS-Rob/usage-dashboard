@@ -4,6 +4,17 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.25.2] — 2026-06-11
+
+### Bugfix — ChatGPT datum/tijd parsing voor niet-NL accounts
+
+- `parseDateResetTime`: ondersteunt nu US maand-eerst formaat `Jun 12, 2026 3:49 PM` naast het bestaande dag-eerst formaat `12 jun 2026`. AM/PM wordt correct naar 24h omgezet.
+- `parseChatgpt5hTime`: AM/PM-suffix wordt nu meegenomen (`1:54 PM` → 13:54 i.p.v. 01:54).
+- Inline weekparse in `renderDashboardProgress` vervangen door `parseDateResetTime` (dubbele logica weg).
+- Hiermee wordt de ontbrekende weekbalk voor Engelstalige ChatGPT-accounts (zoals Sorin) opgelost.
+
+---
+
 ## [0.25.1] — 2026-06-11
 
 ### Bugfix — Onboarding wizard opschoning
