@@ -540,10 +540,11 @@ function scrapeChatGPTUsage() {
             const txt = el.innerText ? el.innerText.trim() : "";
             const lowerTxt = txt.toLowerCase();
             return txt.length > 0 && txt.length < 350 && (
-                lowerTxt.includes("5 uur") || 
-                lowerTxt.includes("5-hour") || 
-                lowerTxt.includes("5u") || 
-                lowerTxt.includes("5h") || 
+                lowerTxt.includes("5 uur") ||
+                lowerTxt.includes("5-hour") ||
+                lowerTxt.includes("5 hour") ||
+                lowerTxt.includes("5u") ||
+                lowerTxt.includes("5h") ||
                 lowerTxt.includes("wekelijks") || 
                 lowerTxt.includes("wekelijkse") || 
                 lowerTxt.includes("weekly") ||
@@ -558,7 +559,7 @@ function scrapeChatGPTUsage() {
             const lowerText = text.toLowerCase();
             logSync(`[Scraper] Kaart-kandidaat ${idx + 1} tekst: "${text}"`);
             
-            const has5h = lowerText.includes("5 uur") || lowerText.includes("5-hour") || lowerText.includes("5u") || lowerText.includes("5h");
+            const has5h = lowerText.includes("5 uur") || lowerText.includes("5-hour") || lowerText.includes("5 hour") || lowerText.includes("5u") || lowerText.includes("5h");
             const hasWeekly = lowerText.includes("week") || lowerText.includes("wekelijks") || lowerText.includes("wekelijkse") || lowerText.includes("weekly");
             
             if (has5h && hasWeekly) {

@@ -4,6 +4,14 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.25.3] — 2026-06-11
+
+### Bugfix — ChatGPT "5 hour usage limit" niet herkend door scraper
+
+Sorin's ChatGPT-pagina toont "5 hour usage limit" (met spatie), terwijl de scraper alleen "5h", "5-hour" en "5 uur" kende. De kaartfilter en `has5h`-check zijn uitgebreid met `"5 hour"`. Hierdoor verschijnt de 5h-balk nu ook op Engelstalige accounts.
+
+---
+
 ## [0.25.2] — 2026-06-11
 
 ### Bugfix — ChatGPT datum/tijd parsing voor niet-NL accounts
