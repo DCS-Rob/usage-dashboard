@@ -4,6 +4,16 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.25.1] — 2026-06-11
+
+### Bugfix — Onboarding wizard opschoning
+
+- Hardcoded "Sorin - ChatGPT" placeholder verwijderd uit het "Add account" veld — veld start nu leeg.
+- "Open guide" link naar `ONBOARDING.md` verwijderd uit wizard (markdown-bestand rendert niet in PWA).
+- `ONBOARDING.md` niet meer gepubliceerd naar GitHub Pages (hoort niet in productie).
+
+---
+
 ## [0.25.0] - 2026-06-10
 
 ### Added - Phase 7 onboarding
