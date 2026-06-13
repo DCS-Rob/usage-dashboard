@@ -118,4 +118,4 @@ The project stays in **beta** until the owner explicitly decides it is ready for
 
 ---
 
-*Status (v0.25.0): Phase 1 mostly complete, Phase 2 partially live, Phase 5 + 6 fully delivered, Phase 7 onboarding live. Remaining: drag-to-reorder and profile groups (Phase 1/2), analysis database (Phase 3), and a possible AES-GCM migration as a separate phase.*
+*Status (v0.26.0): Phase 1 mostly complete, Phase 2 partially live, Phase 5 + 6 fully delivered, Phase 7 onboarding live. The improvement-plan datamodel-split (meta/status/archive Firebase nodes) + ETag conditional writes shipped in v0.26.0 — the phone now streams only `meta`+`status` (~98% less mobile data). Note: the free Firebase Spark download limit (10 GB/month) was hit before v0.26.0 and resets on the 1st of the month; npoint stays as the fallback provider. Remaining: drag-to-reorder and profile groups (Phase 1/2), the analysis database (Phase 3 below), turning off the legacy-blob write once all clients are v0.26.0+, and a possible AES-GCM migration as a separate phase.*

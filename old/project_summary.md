@@ -2,24 +2,29 @@
 
 Volledig handoff-document voor AI-assistenten en ontwikkelaars. Bevat architectuur, werkwijze, versiebeheer-protocol en actuele staat van het project.
 
-**Huidige versie: 0.25.0**
+**Huidige versie: 0.26.0** (beta — blijft `0.x.x` tot expliciet eigenaarsakkoord voor v1.0.0)
+
+> ℹ️ Dit document is bij de repo-opruiming (v0.25.3) naar `old/` verplaatst, maar blijft het canonieke handoff-doc. Planning-/designdocs (`VERBETERVOORSTEL.md`, `FASE_7_ONBOARDING_WIZARD.md`, `ONBOARDING.md`) staan nu ook in `old/`.
 
 ---
 
 ## 📍 Huidige staat (sessie-handoff)
 
-Werk-arc v0.19 → v0.25.0, allemaal gepusht en live op GitHub Pages:
+Werk-arc v0.19 → v0.26.0, allemaal gepusht en live op GitHub Pages:
 
-- **Firebase SSE-streaming (v0.20.0)** — PWA en extensie-dashboard luisteren via realtime Server-Sent Events; data verschijnt < 1s na een scrape. 5-min backup-poll voor fallback.
-- **Reset-timer bugfix (v0.21.1)** — `content.js` berekent `resetSessionAbsoluteTs` bij het scrapen; timer klopt exact op elk apparaat ongeacht sync-vertraging.
-- **"Tab sync" fix (v0.21.1)** — toont nu `lastSynced` (echte scrape) i.p.v. `lastSeen` (heartbeat).
-- **Aangepaste labels + account-detectie (v0.21.0, Fase 5)** — ✎-knop per kaart voor eigen label (bijv. "Kevin — werk"); e-mailadres/accountnaam automatisch gedetecteerd als subtitel op claude.ai en chatgpt.com. Labels opgeslagen in gedeelde `dashboardConfig.labels`.
-- **UI-herindeling (v0.22.x, Fase 6)** — profielenbalk uit het hoofdscherm; nu één compacte dropdown-knop `[● Rob-DCS ▼]` in de hoofdbalk. Klikken toont profiellijst (met online-status), "Add / restore blocks" (met badge voor verborgen blokken) en "Manage profiles" (opent zijpaneel). Geen losse "+" knop of contextbalk boven de kaarten meer.
-- **Onboarding-wizard (v0.25.0, Fase 7)** — Guided setup vanuit banner en profielen-zijpaneel voor eigen dashboard starten, bestaand dashboard joinen en extra accounts/personen koppelen. `ONBOARDING.md` toegevoegd.
+- **Firebase SSE-streaming (v0.20.0)** — PWA en extensie-dashboard luisteren via realtime Server-Sent Events; data verschijnt < 1s na een scrape.
+- **Aangepaste labels + account-detectie (v0.21.0, Fase 5)** — ✎-knop per kaart voor eigen label (bijv. "Kevin — werk"); e-mailadres/accountnaam automatisch gedetecteerd als subtitel. Labels in gedeelde `dashboardConfig.labels`.
+- **UI-herindeling (v0.22.x, Fase 6)** — profielindicator als compacte dropdown `[● Rob-DCS ▼]` in de hoofdbalk; profiellijst, "Add / restore blocks" en "Manage profiles" zitten erin. Geen losse "+" of contextbalk meer.
+- **Onboarding-wizard (v0.25.0, Fase 7)** — Guided setup: eigen dashboard starten, bestaand dashboard joinen, extra account/persoon koppelen.
+- **Engelstalige ChatGPT-fixes (v0.25.2–0.25.3)** — US datum/tijd-formaat (`Jun 12, 2026 3:49 PM`, AM/PM) en "5 hour usage limit" (met spatie) worden nu correct geparset/gescraped, zodat Sorin's week- en 5h-balk verschijnen.
+- **🆕 Datamodel-split + ETag (v0.26.0, "Fase 3" uit het verbeterplan — de grootste fase)** — de versleutelde cloud-blob is opgesplitst in losse Firebase-nodes (`meta`/`status/<pid>`/`archive/<pid>`) + een legacy slim-blob (`data`) voor backward-compat. De telefoon streamt nog maar `meta`+`status` (~enkele KB i.p.v. ~255 KB → ~98% minder mobiel dataverkeer). Schrijven naar de gedeelde `meta`-node gebeurt **ETag-conditioneel** (`if-match`, retry bij 412) zodat gelijktijdige schrijvers elkaar niet meer overschrijven. Logs-retentie: 90 dagen / max 2000 items. **Alleen Firebase** gebruikt de split; npoint blijft het enkel-blob model.
 
-**Live getest:** twee Chrome-profielen (Rob-DCS + Personal) succesvol gekoppeld via invite-link; beide zichtbaar in het dropdown (2 online).
+**Live getest:** twee Chrome-profielen gekoppeld via invite-link; v0.26.0-datalaag geverifieerd met node-tests tegen een wegwerp-Firebase-bin (split read/write, geen cross-clobber, ETag-retry, legacy-fallback) + browser-CORS-check op de `if-match`-write.
 
-**Open punten:** drag-to-reorder van kaarten, profielgroepen, analyse-database (Fase 3), eventuele AES-GCM-migratie als aparte fase.
+### ⚠️ Firebase gratis-quota (Spark) — actueel aandachtspunt (2026-06-13)
+Het oude model (volledige blob bij elke poll) verbruikte ~349 MB/dag download → de **gratis 10 GB/maand download-limiet** werd overschreden (stand 13 jun: **10,47 GB**, storage slechts 556 KB, 4/100 connecties). Reset op **1 juli** (billing-periode 1 jun – 1 jul). v0.26.0 verlaagt dit naar ~7 MB/dag. Plan: alle extensies naar v0.26.0 herladen (lek dichten) en uitrijden tot de reset; **npoint** als noodbrug als Firebase de reads tóch blokkeert. Een eenmalige reminder voor 1 juli staat klaar om de sync terug naar Firebase te zetten. **Geen Blaze-upgrade / betaalgegevens** zonder expliciete eigenaarskeuze.
+
+**Open punten:** drag-to-reorder van kaarten, profielgroepen, analyse-database & grafieken (de échte ROADMAP-Fase 3), eventuele AES-GCM-migratie, en op termijn legacy-blob-write uitzetten (`CS2_WRITE_LEGACY=false`) zodra alle clients v0.26.0+ draaien.
 
 ---
 
@@ -133,14 +138,24 @@ De indicator toont "PWA Behind" als `APP_VERSION` in de live `app.js` op GitHub 
    - **agents-controller (optioneel, privé)**: Tailscale HTTPS poort 9000.
 
 3. **Cloud Sync** — twee providers (keuze bij aanmaken koppeling):
-   - **Firebase Realtime Database** (primair, sneller): `usage-dashboard-98f1d`, regio `europe-west1`, Spark free tier. REST API — geen SDK. Database URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
-   - **npoint.io** (fallback): gratis JSON bin, werkt overal
-   - Payload is **E2E XOR-versleuteld** in het `data`-veld. Data-structuur in de bin:
-     `{ data: "<encrypted>", profiles: { "pid-xxx": { label, syncStatus, lastSeen } }, dashboardConfig, logs, settings, refreshRequested }`
-   - `syncStatus` per profiel bevat per provider de laatste snapshot: `claude`, `chatgpt`, `codex`, `gemini`
-   - Multi-profiel: elk Chrome-profiel pusht onder zijn eigen `profileId` → dashboard toont één kaart per (profiel × abonnement)
-   - **`dashboardConfig` (gedeeld, v0.18.0):** `{ providersOff: { gemini:true }, blocks: { "<pid>|<provider>": "hidden"|"added" } }` — de dashboard-configuratie (welke blokken zichtbaar/verborgen/toegevoegd) is **gedeeld over alle profielen**, niet apparaat-lokaal.
-   - **Iedere schrijver gebruikt read-modify-write** (lees → wijzig eigen slice → schrijf) zodat `profiles{}` en `dashboardConfig` nooit door een andere actie gewist worden. Dit geldt voor: `background.js pushUserDataToCloud`, `app.js pushUserDataToCloud`, `persistDashboardConfig`, `deleteCloudProfile`, `requestRemoteRefresh`, `resetRemoteRefreshRequestFlagBG`. ⚠️ Nooit de hele bin overschrijven zonder eerst te lezen.
+   - **Firebase Realtime Database** (primair, sneller): `usage-dashboard-98f1d`, regio `europe-west1`, **Spark free tier** (limieten: 1 GB opslag, **10 GB/maand download**, 100 gelijktijdige verbindingen). REST API — geen SDK. URL: `https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app`
+   - **npoint.io** (fallback): gratis JSON bin, werkt overal, geen maand-egress-cap
+   - Payload is overal **E2E XOR-versleuteld** (`{ data: "<encrypted>" }`-envelop per node).
+
+   **🆕 Datamodel v2 (v0.26.0, alleen Firebase) — gesplitst over nodes onder `profiles/<binId>/`:**
+
+   | Node | Inhoud | Eigenschap |
+   |------|--------|-----------|
+   | `meta` | `{ dashboardConfig, refreshRequested, refreshRequestedAt, refreshClaimedBy, refreshClaimedAt, schema:2 }` | **gedeeld** — schrijven via **ETag conditional write** (`if-match`, retry bij 412); maakt o.a. de refresh-claim atomair |
+   | `status/<pid>` | `{ label, syncStatus, lastSeen, pcOnline, lastError }` per profiel | per profiel — geen onderlinge clobbering |
+   | `archive/<pid>` | `{ logs, threads }` per profiel | zwaar — **lui geladen** (alleen pace-overlays + Analyze-tab), niet in de hot-stream |
+   | `data` | legacy slim-blob (zonder logs/threads) | overgang — blijft geschreven zolang `CS2_WRITE_LEGACY=true`, zodat niet-herladen clients blijven werken |
+
+   - **Telefoon streamt alleen `meta`+`status`** (SSE) → ~enkele KB i.p.v. de hele blob.
+   - `syncStatus` per profiel: laatste snapshot per provider (`claude`, `chatgpt`, `codex`, `gemini`).
+   - **Backward-compat / migratie:** nieuwe clients lezen `meta`+`status` met automatische terugval op de oude `data`-blob (`cs2ReadState`); de eerste schrijfactie migreert een bin naar v2. **npoint** blijft het oude enkel-blob model (split is Firebase-only).
+   - **`dashboardConfig` (gedeeld, v0.18.0):** `{ providersOff, blocks: { "<pid>|<provider>": "hidden"|"added" }, labels }` — gedeeld over alle profielen (zit nu in `meta`).
+   - **Gouden regel:** elke schrijf naar een **gedeelde** node = read-modify-write; v2 doet dit **ETag-conditioneel** op `meta`. Per-profiel nodes (`status`/`archive`) hebben één eigenaar → geen contentie. ⚠️ Nooit de root `profiles/<binId>` PUT-en na migratie (zou de child-nodes wissen) — alle writes gaan naar sub-paden via de `cs2*`-helpers.
 
 ### Multi-profiel architectuur (v0.10+)
 
@@ -187,8 +202,10 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 | `buildSnapshotCard()` + `computeProviderPace()` | Bouwt een card per (profiel × provider) met volledige pace-secties |
 | `parseClaudeSessionTime` / `parseClaudeWeeklyTime` / `parseChatgpt5hTime` / `parseDateResetTime` | Herbruikbare reset-tijd parsers (EN+NL) voor de snapshot-cards |
 | `applyBlockVisibility()` + `hasProviderData()` + `getCurrentProfileContext()` | Auto-zichtbaarheid + verberg-logica voor de statische cards |
-| `pushUserDataToCloud()` | **Read-modify-write** upload van het eigen profiel-slice (behoudt andere profielen + config) |
-| `persistDashboardConfig()` + `getSyncConfigForWrite()` | Read-modify-write van de **gedeelde** `dashboardConfig` (extensie + PWA) |
+| `cs2ReadEnc` / `cs2WriteEnc` / `cs2UpdateEnc` / `cs2PutEnc` / `cs2ReadStatusAll` / `cs2ReadArchive` / `cs2ReadState` (v0.26.0, in app.js **én** background.js) | CloudStore v2-laag: per-node lees/schrijf met **ETag conditional writes**, statuscollectie lezen, archive lui lezen, en genormaliseerd staat-doc lezen met legacy-fallback |
+| `refreshPwaArchives()` (v0.26.0) | Laadt logs/threads lui uit `archive/<pid>` op de PWA (cache op `lastSeen`) voor pace-overlays + Analyze-tab |
+| `pushUserDataToCloud()` | Upload van het eigen profiel-slice. **v0.26.0:** Firebase → `status/<pid>` + `archive/<pid>` + `meta`; npoint → legacy blob (read-modify-write) |
+| `persistDashboardConfig()` + `getSyncConfigForWrite()` | Schrijft de **gedeelde** `dashboardConfig`. **v0.26.0:** Firebase → ETag-RMW op `meta`; npoint → blob-RMW |
 | `isBlockVisible()` (=`!isProviderOff`) / `isBlockHidden()` / `isBlockAdded()` | Zichtbaarheids-checks, lezen uit `state.dashboardConfig` |
 | `addBlockToView()` / `removeBlockFromView()` / `clearBlockOverride()` / `setProviderOff()` | Wijzigen van de gedeelde config (optimistisch + persist) |
 | `normalizeDashboardConfig()` + `migrateLocalConfigOnce()` | Config normaliseren + eenmalige migratie van oude `localStorage`-voorkeuren |
@@ -198,12 +215,12 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 
 ## 2. Remote Refresh Flow (Telefoon → PC)
 
-1. Telefoon drukt op Ververs → `requestRemoteRefresh()` schrijft `refreshRequested: true` naar de cloud-bin (read-modify-write, behoudt profiles/config)
-2. PC background alarm (`checkForRemoteRefreshRequestBG`, elke 30s) detecteert de vlag
-3. Throttle: max 1 scrape per 90s, opgeslagen in `chrome.storage.local` (overleeft SW-restarts)
+1. Telefoon drukt op Ververs → `requestRemoteRefresh()` zet `refreshRequested: true`. **v0.26.0:** Firebase schrijft dit ETag-conditioneel naar de `meta`-node (+ legacy blob); npoint doet read-modify-write op de blob.
+2. PC background alarm (`checkForRemoteRefreshRequestBG`, elke 30s) leest de vlag (Firebase: uit `meta`) en detecteert het verzoek
+3. Throttle: max 1 scrape-trigger per **30s**, opgeslagen in `chrome.storage.local` (overleeft SW-restarts). Refresh-claim (`refreshClaimedBy`) in `meta` voorkomt dat twee profielen tegelijk oppakken.
 4. Scrapers starten op achtergrond (`triggerScrapeFromBackground`, `active: false` — geen schermwissel)
-5. Background.js pusht verse data + `refreshRequested: false` naar de cloud-bin
-6. Telefoon fast-poll (2.5s interval, max 90s) detecteert nieuwere `lastSynced` → UI update
+5. Background.js schrijft verse data naar `status/<pid>` + `archive/<pid>` en wist `refreshRequested` in `meta`
+6. Telefoon fast-poll (2.5s, daarna trage poll mét statusmelding) via `cs2ReadState` detecteert nieuwere `lastSynced` → UI update
 
 > **Let op:** Er is maar **één** poller — de background alarm. De dashboard-poller die vroeger in `app.js` zat is verwijderd omdat die dubbele scrape-triggers veroorzaakte.
 
@@ -221,10 +238,11 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 | `style.css` | CSS | Glassmorphism UI, animaties, responsive |
 | `sw.js` | Service Worker | PWA cache (stale-while-revalidate) |
 | `manifest.webmanifest` | PWA manifest | Installeerbaar als app op telefoon |
-| `ONBOARDING.md` | Documentatie | Gebruikersvriendelijke setup voor eigen dashboard, joinen en extra accounts |
 | `lib/chart.min.js` | Bibliotheek | Chart.js lokaal gebundeld (CDN geblokkeerd door MV3) — enige lib in `lib/` |
 | `bump-version.ps1` | Script | Werkt alle versienummers bij in één keer |
 | `CHANGELOG.md` | Documentatie | Versiegeschiedenis |
+| `ROADMAP.md` | Documentatie | Forward-looking gefaseerd plan (source of truth voor de grote update) |
+| `old/` | Archief | Niet-runtime planning/design-docs: `project_summary.md` (dit doc), `VERBETERVOORSTEL.md`, `FASE_7_ONBOARDING_WIZARD.md`, `ONBOARDING.md` (verplaatst v0.25.3) |
 | `.github/workflows/release.yml` | CI/CD | Maakt automatisch GitHub Release bij tag push |
 | `.github/workflows/pages.yml` | CI/CD | Deployt de PWA naar GitHub Pages bij push naar `main` |
 
@@ -241,8 +259,8 @@ Het dashboard kent drie provider-blokken, elk met een eigen kleur:
 
 ### PWA — publieke host (GitHub Pages, default)
 - Auto-deploy via `.github/workflows/pages.yml` naar `https://dcs-rob.github.io/usage-dashboard/`
-- Publiceert **alleen** de PWA-bestanden (index.html, app.js, style.css, sw.js, manifest.webmanifest, ONBOARDING.md, assets/, lib/) — geen extensie-manifest, background.js of content.js
-- Veilig omdat de data E2E-versleuteld in npoint.io staat; zonder `pairingKey` (alleen via QR naar de eigen telefoon) valt er niets te lezen
+- Publiceert **alleen** de PWA-bestanden (index.html, app.js, style.css, sw.js, manifest.webmanifest, assets/, lib/) — geen extensie-manifest, background.js, content.js of markdown-docs (`ONBOARDING.md` werd in v0.25.1 uit de Pages-deploy verwijderd)
+- Veilig omdat de data E2E-versleuteld is; zonder `pairingKey` valt er niets te lezen
 - Pages-bron staat op "GitHub Actions": `gh api -X PUT repos/DCS-Rob/usage-dashboard/pages -f build_type=workflow`
 
 ### PWA — privé host (agents-controller, optioneel)
@@ -276,6 +294,10 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 | Versie | Datum | Wijziging |
 |--------|-------|-----------|
+| **0.26.0** | 2026-06-13 | **Datamodel-split + ETag ("Fase 3" verbeterplan):** cloud-blob opgesplitst in `meta`/`status/<pid>`/`archive/<pid>` (+ legacy `data`-blob). Telefoon streamt alleen `meta`+`status` (~98% minder download). Gedeelde `meta`-writes ETag-conditioneel (`if-match`, retry bij 412). Logs-retentie 90d/2000. Backward-compatible (`cs2ReadState`-fallback); alleen Firebase. |
+| **0.25.3** | 2026-06-11 | Scraper-fix: ChatGPT "5 hour usage limit" (met spatie) wordt nu herkend → 5h-balk verschijnt op Engelstalige accounts. |
+| **0.25.2** | 2026-06-11 | Parser-fix: US datum/tijd-formaat (`Jun 12, 2026 3:49 PM`) + AM/PM in `parseChatgpt5hTime`/`parseDateResetTime` → week-/5h-balk klopt op Engelstalige ChatGPT. |
+| **0.25.1** | 2026-06-11 | Onboarding-opschoning: hardcoded "Sorin - ChatGPT" placeholder weg, gebroken `ONBOARDING.md`-link uit wizard, `ONBOARDING.md` uit Pages-deploy. |
 | **0.25.0** | 2026-06-10 | **Fase 7:** Guided setup wizard + `ONBOARDING.md`; eigen dashboard starten, bestaand dashboard joinen en extra account/persoon koppelen. |
 | **0.22.4** | 2026-06-10 | "+" blok-knop samengevoegd in profiel-dropdown; header-label toont "All profiles" zonder online-telling. |
 | **0.22.3** | 2026-06-10 | Profielindicator verplaatst naar hoofdbalk als `[● Naam ▼]` dropdown; aparte contextbalk boven kaarten verwijderd. |
@@ -327,15 +349,19 @@ Chrome Manifest V3 heeft een strikte Content Security Policy. Verboden:
 
 Zie `ROADMAP.md` voor het volledige gefaseerde plan. Korte stand van zaken:
 
+### ✅ Recent opgeleverd
+- **Datamodel-split + ETag (v0.26.0)** — de grote "Fase 3" uit het verbeterplan (`old/VERBETERVOORSTEL.md`). Lost het mobiele-dataverbruik (255 KB/poll) en de race-conditie bij gelijktijdige schrijvers op.
+
 ### Kortetermijn (open binnen Fase 1/2)
 - **Drag-to-reorder** van kaarten + opgeslagen layout per gebruiker.
 - **Profielgroepen** ("folders"-gevoel) + selectie welke profielen je toont.
+- **Legacy-blob-write uitzetten** (`CS2_WRITE_LEGACY=false`) zodra alle clients v0.26.0+ draaien → laatste 255 KB-write verdwijnt.
 
-### TODO-1: Analyse-database (Fase 3)
-Historische usage per profiel/model/tijd in Firebase, met grafieken en trends.
+### TODO-1: Analyse-database (ROADMAP-Fase 3 — let op: andere "Fase 3" dan de datamodel-split)
+Historische usage per profiel/model/tijd, met grafieken en trends (de Analyze-tab + `lib/chart.min.js` staan al klaar).
 
 ### TODO-2: Server-side scraper (langetermijn)
 Playwright/Puppeteer headless scraper op agents-controller zodat de PC-browser niet open hoeft te staan.
 
-### TODO-3: npoint.io fallback uitfaseren (langetermijn)
-Firebase is nu primair; npoint kan op termijn weg of vervangen worden door eigen opslag op agents-controller.
+### TODO-3: npoint.io fallback / opslag (langetermijn)
+Firebase is primair, maar de **gratis Spark-download-limiet (10 GB/maand)** is een reële grens (zie het quota-aandachtspunt bovenaan). npoint blijft daarom voorlopig de noodbrug. Opties op termijn: eigen opslag op agents-controller, of een betaald Firebase Blaze-plan met budgetlimiet (alleen op expliciete eigenaarskeuze).
