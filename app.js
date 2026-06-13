@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.25.3";
+const APP_VERSION = "0.26.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -335,7 +335,7 @@ function isSyncClient() {
         // Fallback naar cookie storage als localStorage is gewist
         config = CookieStorage.get("lt_sync_client_config");
         if (config) {
-            console.log("[USAGE DASHBOARD] LocalStorage configuratie ontbrak. Hersteld uit cookie-back-up.");
+            console.log("[USAGE DASHBOARD] LocalStorage config was missing. Restored from cookie backup.");
             localStorage.setItem("lt_sync_client_config", JSON.stringify(config));
             return config;
         }
@@ -410,13 +410,8 @@ function initApp() {
         // npoint heeft geen streaming-support en blijft pollen elke 25s.
         const _sseInitCfg = isSyncClient();
         if (_sseInitCfg) {
-            _firebaseStreamPWA = startFirebaseStreaming(_sseInitCfg, (rawDoc) => {
-                if (rawDoc) {
-                    processRawCloudDoc(rawDoc, _sseInitCfg, false);
-                } else {
-                    loadCloudUserData(false); // patch-event: volledige herlaad
-                }
-            });
+            // V2-stream: bij elke meta/status-wijziging gewoon opnieuw inlezen (goedkoop).
+            _firebaseStreamPWA = startFirebaseStreaming(_sseInitCfg, () => loadCloudUserData(false));
         }
         if (!_firebaseStreamPWA) {
             // npoint of streaming mislukt → behoud 25s poll
@@ -3000,28 +2995,170 @@ function syncRelay(config) {
     return SYNC_PROVIDERS[resolveSyncProviderId(config)];
 }
 
+/* ==========================================================================
+   CLOUDSTORE V2 — gesplitst datamodel (Fase 3). Spiegelt background.js exact.
+   Node-layout onder profiles/<binId>/:
+     meta          -> enc({ dashboardConfig, refresh*, schema:2 })   [gedeeld, ETag-bewaakt]
+     status/<pid>  -> enc({ label, syncStatus, lastSeen, pcOnline, lastError })  [per profiel, ETag-RMW]
+     archive/<pid> -> enc({ logs, threads })                          [per profiel, plain PUT]
+     data          -> LEGACY slim blob (overgang; geen logs/threads)  [oude clients]
+   Alleen Firebase gebruikt de split; npoint blijft het oude enkel-blob model.
+   ========================================================================== */
+const CS2_SCHEMA = 2;
+const CS2_LOG_RETENTION_DAYS = 90;
+const CS2_LOG_MAX = 2000;          // harde bovengrens logs per profiel
+const CS2_WRITE_LEGACY = true;     // schrijf ook de oude blob zolang niet alle clients v2 zijn
+
+function cs2IsFirebase(config) { return !!(config && config.provider === "firebase"); }
+function cs2Url(binId, sub) { return `${FIREBASE_DB_URL}/profiles/${binId}/${sub}.json`; }
+
+function cs2PruneLogs(logs) {
+    if (!Array.isArray(logs)) return [];
+    const cutoff = Date.now() - CS2_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    let out = logs.filter(l => l && typeof l.timestamp === "number" && l.timestamp >= cutoff);
+    if (out.length > CS2_LOG_MAX) out = out.slice(out.length - CS2_LOG_MAX);
+    return out;
+}
+
+// Lees één versleutelde node -> {obj, etag}. obj = {} als afwezig/onleesbaar.
+function cs2ReadEnc(config, sub) {
+    return fetch(cs2Url(config.binId, sub) + `?nocache=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "X-Firebase-ETag": "true" }
+    }).then(r => {
+        const etag = r.headers.get("ETag");
+        return r.json().then(raw => {
+            let obj = {};
+            if (raw && raw.data) { try { obj = JSON.parse(CryptoSync.decrypt(raw.data, config.pairingKey)); } catch (e) {} }
+            return { obj, etag };
+        }).catch(() => ({ obj: {}, etag }));
+    });
+}
+
+// Schrijf versleutelde node. etag null -> onvoorwaardelijk. -> {ok}|{conflict}
+function cs2WriteEnc(config, sub, obj, etag) {
+    const headers = { "Content-Type": "application/json" };
+    if (etag) headers["if-match"] = etag;
+    const body = JSON.stringify({ data: CryptoSync.encrypt(JSON.stringify(obj), config.pairingKey) });
+    return fetch(cs2Url(config.binId, sub), { method: "PUT", headers, body }).then(r => {
+        if (r.status === 412) return { conflict: true };   // race → cs2UpdateEnc herleest + retry
+        if (!r.ok) throw new Error("cs2 write " + r.status);
+        return { ok: true };
+    }).catch(err => {
+        // Vangnet: faalt de conditionele write door een netwerk/CORS-fout (géén 412),
+        // schrijf dan onvoorwaardelijk zodat data niet stil verloren gaat.
+        if (!etag) throw err;
+        return fetch(cs2Url(config.binId, sub), { method: "PUT", headers: { "Content-Type": "application/json" }, body })
+            .then(r2 => { if (!r2.ok) throw new Error("cs2 write(uncond) " + r2.status); return { ok: true }; });
+    });
+}
+
+// ETag read-modify-write op een versleutelde node, retry bij 412 (race).
+function cs2UpdateEnc(config, sub, mutator, attempts = 5) {
+    return cs2ReadEnc(config, sub).then(({ obj, etag }) => {
+        const next = mutator(Object.assign({}, obj)) || obj;
+        return cs2WriteEnc(config, sub, next, etag).then(res => {
+            if (res && res.conflict && attempts > 1) return cs2UpdateEnc(config, sub, mutator, attempts - 1);
+            return res;
+        });
+    });
+}
+
+// Plain overschrijf (volledige inhoud bekend) — voor archive.
+function cs2PutEnc(config, sub, obj) {
+    return cs2WriteEnc(config, sub, obj, null).then(() => true);
+}
+
+// Lees de hele status-collectie -> {pid: statusObj}.
+function cs2ReadStatusAll(config) {
+    return fetch(cs2Url(config.binId, "status") + `?nocache=${Date.now()}`, { cache: "no-store" })
+        .then(r => r.ok ? r.json() : null)
+        .then(coll => {
+            const profiles = {};
+            if (coll) for (const pid of Object.keys(coll)) {
+                const node = coll[pid];
+                if (node && node.data) { try { profiles[pid] = JSON.parse(CryptoSync.decrypt(node.data, config.pairingKey)); } catch (e) {} }
+            }
+            return profiles;
+        }).catch(() => ({}));
+}
+
+// Lees archive (logs/threads) van één profiel -> {logs, threads}.
+function cs2ReadArchive(config, pid) {
+    return cs2ReadEnc(config, `archive/${pid}`).then(({ obj }) => ({
+        logs: Array.isArray(obj.logs) ? obj.logs : [],
+        threads: Array.isArray(obj.threads) ? obj.threads : []
+    }));
+}
+
+// Bouw de slim legacy-blob-mutator (zonder logs/threads) voor niet-geüpgradede clients.
+function cs2LegacyBlobMutator(profileId, profileLabel, syncStatus) {
+    return (doc) => {
+        if (!doc.profiles) doc.profiles = {};
+        doc.profiles[profileId] = { label: profileLabel, syncStatus: syncStatus || {}, lastSeen: Date.now() };
+        doc.syncStatus = syncStatus || {};
+        doc.refreshRequested = false;
+        doc.refreshRequestedAt = null;
+        return doc;
+    };
+}
+
+/* Lees de volledige (gesplitste of legacy) cloud-staat → genormaliseerd doc.
+   Geeft {profiles, dashboardConfig, refreshRequested, refreshRequestedAt,
+   refreshClaimedBy, refreshClaimedAt, _schema}. logs/threads NIET (lui via archive). */
+function cs2ReadState(config) {
+    if (!cs2IsFirebase(config)) {
+        // npoint: enkel-blob.
+        return syncRelay(config).read(config.binId).then(data => {
+            if (!data || !data.data) return null;
+            try { return JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey)); } catch (e) { return null; }
+        });
+    }
+    // Firebase: meta + status-collectie parallel.
+    return Promise.all([cs2ReadEnc(config, "meta"), cs2ReadStatusAll(config)]).then(([metaRes, statusProfiles]) => {
+        const meta = metaRes.obj || {};
+        const hasV2 = meta.schema === CS2_SCHEMA || Object.keys(statusProfiles).length > 0;
+        if (hasV2) {
+            return {
+                profiles: statusProfiles,
+                dashboardConfig: meta.dashboardConfig,
+                refreshRequested: meta.refreshRequested,
+                refreshRequestedAt: meta.refreshRequestedAt,
+                refreshClaimedBy: meta.refreshClaimedBy,
+                refreshClaimedAt: meta.refreshClaimedAt,
+                _schema: CS2_SCHEMA
+            };
+        }
+        // Niet-gemigreerde bin → val terug op de legacy root-blob.
+        return cs2ReadEnc(config, "data").then(({ obj }) => (obj && Object.keys(obj).length ? obj : null));
+    });
+}
+
 // ---- Firebase SSE Streaming (Fase 2) ----
 let _firebaseStreamPWA      = null;
 let _firebaseStreamDesktop  = null;
 let _desktopStreamAttempted = false;
 
-function startFirebaseStreaming(config, onDoc) {
+function startFirebaseStreaming(config, onChange) {
     if (resolveSyncProviderId(config) !== "firebase") return null;
     if (!config.binId || !config.pairingKey) return null;
-    const url = `${FIREBASE_DB_URL}/profiles/${config.binId}.json`;
-    const es  = new EventSource(url);
-    es.addEventListener("put", (e) => {
+    // V2: stream alleen de kleine 'meta'- + 'status'-nodes (niet de zware archive/root).
+    // Elke wijziging → debounced reload via de meegegeven callback (de reload is goedkoop:
+    // meta + status zijn samen enkele KB i.p.v. de volledige 255 KB-blob).
+    const sources = [];
+    let debounce = null;
+    const fire = () => { clearTimeout(debounce); debounce = setTimeout(() => { try { onChange(); } catch (e) {} }, 150); };
+    ["meta", "status"].forEach(sub => {
         try {
-            const msg = JSON.parse(e.data);
-            // msg = { path: "/", data: { data: "<enc>", ... } }
-            if (msg && msg.data) onDoc(msg.data);
-        } catch (err) { console.warn("[SSE Firebase] put parse error:", err); }
+            const es = new EventSource(cs2Url(config.binId, sub));
+            es.addEventListener("put", fire);
+            es.addEventListener("patch", fire);
+            es.onerror = () => {};  // EventSource herverbindt automatisch
+            sources.push(es);
+        } catch (e) {}
     });
-    es.addEventListener("patch", () => onDoc(null));  // partieel → volledige herlaad
-    es.addEventListener("cancel", () => console.warn("[SSE Firebase] Stream gecanceld"));
-    es.onerror = () => {};  // EventSource herverbindt automatisch
-    console.log("[SSE Firebase] Streaming gestart:", config.binId);
-    return es;
+    console.log("[SSE Firebase V2] Streaming meta+status:", config.binId);
+    return { close: () => sources.forEach(s => { try { s.close(); } catch (e) {} }) };
 }
 
 let lastSyncTime = null;
@@ -3359,26 +3496,37 @@ function persistDashboardConfig() {
     _dashCfgWriteInFlight = true;
     getSyncConfigForWrite((config) => {
         if (!config || !config.binId || !config.pairingKey) { _dashCfgWriteInFlight = false; return; }
+        const dashCfg = {
+            providersOff: cfg.providersOff || {},
+            blocks: cfg.blocks || {},
+            labels: cfg.labels || {},
+            updatedAt: Date.now()
+        };
+        const done = () => {
+            _dashCfgWriteInFlight = false;
+            if (_dashCfgWriteQueued) { _dashCfgWriteQueued = false; persistDashboardConfig(); }
+        };
+        const fail = () => { _dashCfgWriteInFlight = false; };
+
+        // V2 (Firebase): gedeelde config in de meta-node (ETag-RMW) + legacy blob.
+        if (cs2IsFirebase(config)) {
+            const writes = [ cs2UpdateEnc(config, "meta", (m) => { m.schema = CS2_SCHEMA; m.dashboardConfig = dashCfg; return m; }) ];
+            if (CS2_WRITE_LEGACY) writes.push(cs2UpdateEnc(config, "data", (d) => { d.dashboardConfig = dashCfg; return d; }));
+            Promise.all(writes).then(done).catch(fail);
+            return;
+        }
+
+        // Legacy (npoint): enkel-blob RMW.
         const relay = syncRelay(config);
         relay.read(config.binId).then(existing => {
             let cloudDoc = {};
             if (existing && existing.data) {
                 try { cloudDoc = JSON.parse(CryptoSync.decrypt(existing.data, config.pairingKey)); } catch (e) {}
             }
-            cloudDoc.dashboardConfig = {
-                providersOff: cfg.providersOff || {},
-                blocks: cfg.blocks || {},
-                labels: cfg.labels || {},
-                updatedAt: Date.now()
-            };
+            cloudDoc.dashboardConfig = dashCfg;
             const enc = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
             return relay.write(config.binId, { data: enc });
-        }).then(() => {
-            _dashCfgWriteInFlight = false;
-            if (_dashCfgWriteQueued) { _dashCfgWriteQueued = false; persistDashboardConfig(); }
-        }).catch(() => {
-            _dashCfgWriteInFlight = false;
-        });
+        }).then(done).catch(fail);
     });
 }
 
@@ -3836,24 +3984,17 @@ function loadCloudProfilesForDesktop() {
         const config = res.lt_sync_config;
         if (!config || !config.enabled || !config.binId || !config.pairingKey) return;
 
-        // Start Firebase SSE-stream eenmalig op; npoint blijft op 60s poll
+        // Start Firebase SSE-stream eenmalig op; npoint blijft op 60s poll.
+        // V2-stream: elke meta/status-wijziging triggert een goedkope herlees.
         if (!_desktopStreamAttempted) {
             _desktopStreamAttempted = true;
-            _firebaseStreamDesktop = startFirebaseStreaming(config, (rawDoc) => {
-                if (!rawDoc) { loadCloudProfilesForDesktop(); return; } // patch → full read
-                try {
-                    applyDesktopCloudDoc(JSON.parse(CryptoSync.decrypt(rawDoc.data, config.pairingKey)));
-                } catch (e) {}
-            });
+            _firebaseStreamDesktop = startFirebaseStreaming(config, () => loadCloudProfilesForDesktop());
         }
 
-        // Altijd ook een directe read: betrouwbare initiële staat + npoint-fallback.
-        // (Voor Firebase is dit ook de backup als de stream een beat mist.)
-        syncRelay(config).read(config.binId).then(data => {
-            if (!data || !data.data) return;
-            try {
-                applyDesktopCloudDoc(JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey)));
-            } catch (e) {}
+        // Directe read (V2: meta+status; legacy/npoint: blob) → toepassen.
+        // Voor Firebase is dit ook de backup als de stream een beat mist.
+        cs2ReadState(config).then(doc => {
+            if (doc) applyDesktopCloudDoc(doc);
         }).catch(() => {});
     });
 }
@@ -3915,23 +4056,42 @@ function deleteCloudProfile(profileId) {
             showToast(`<i class="fa-solid fa-circle-exclamation"></i> No sync configured.`);
             return;
         }
+        const label = (state.cloudProfiles && state.cloudProfiles[profileId] && state.cloudProfiles[profileId].label) || profileId;
+        const afterRemove = () => {
+            // Lokale state bijwerken
+            if (state.cloudProfiles) delete state.cloudProfiles[profileId];
+            if (state.selectedProfileId === profileId) state.selectedProfileId = null;
+            delete _archiveCache[profileId];
+            showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile "${label}" removed.`);
+            renderProfileBar();
+            renderDashboardProgress();
+        };
+
+        // V2 (Firebase): verwijder de status- én archive-node van dit profiel (+ legacy blob).
+        if (cs2IsFirebase(config)) {
+            const dels = [
+                fetch(cs2Url(config.binId, `status/${profileId}`), { method: "DELETE" }).catch(() => {}),
+                fetch(cs2Url(config.binId, `archive/${profileId}`), { method: "DELETE" }).catch(() => {})
+            ];
+            if (CS2_WRITE_LEGACY) {
+                dels.push(cs2UpdateEnc(config, "data", (d) => { if (d.profiles) delete d.profiles[profileId]; return d; }).catch(() => {}));
+            }
+            Promise.all(dels).then(afterRemove).catch(() => {
+                showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not remove profile — sync error.`);
+            });
+            return;
+        }
+
+        // Legacy (npoint): enkel-blob RMW.
         const relay = syncRelay(config);
         relay.read(config.binId).then(data => {
             if (!data || !data.data) return;
             let cloudDoc = {};
             try { cloudDoc = JSON.parse(CryptoSync.decrypt(data.data, config.pairingKey)); } catch (e) {}
             if (!cloudDoc.profiles) cloudDoc.profiles = {};
-            const label = (cloudDoc.profiles[profileId] && cloudDoc.profiles[profileId].label) || profileId;
             delete cloudDoc.profiles[profileId];
             const encrypted = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
-            return relay.write(config.binId, { data: encrypted }).then(() => {
-                // Lokale state bijwerken
-                if (state.cloudProfiles) delete state.cloudProfiles[profileId];
-                if (state.selectedProfileId === profileId) state.selectedProfileId = null;
-                showToast(`<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Profile "${label}" removed.`);
-                renderProfileBar();
-                renderDashboardProgress();
-            });
+            return relay.write(config.binId, { data: encrypted }).then(afterRemove);
         }).catch(() => {
             showToast(`<i class="fa-solid fa-circle-exclamation"></i> Could not remove profile — sync error.`);
         });
@@ -3981,33 +4141,34 @@ function saveDashboardProfileName() {
 
 // Verwerk een volledig (onversleuteld) cloud-document in de PWA-state.
 // Wordt aangeroepen vanuit loadCloudUserData én vanuit de SSE-callback.
-function processRawCloudDoc(data, syncClient, isManual) {
+function processNormalizedCloudDoc(doc, syncClient, isManual) {
     const btnSyncAll    = document.getElementById("btn-sync-all");
     const btnMobRefresh = document.getElementById("btn-mobile-refresh");
     const stopSpinners  = () => {
         if (btnSyncAll)    { const i = btnSyncAll.querySelector("i");    if (i) i.classList.remove("fa-spin"); }
         if (btnMobRefresh) { const i = btnMobRefresh.querySelector("i"); if (i) i.classList.remove("fa-spin"); }
     };
-    if (!data || !data.data) {
+    if (!doc) {
         stopSpinners();
         updateMobileSyncIndicator(false);
         if (isManual) showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: geen data`);
         return;
     }
     try {
-        const decryptedStr  = CryptoSync.decrypt(data.data, syncClient.pairingKey);
-        const decryptedData = JSON.parse(decryptedStr);
-        state.userLogs      = decryptedData.logs    || [];
-        state.userThreads   = decryptedData.threads || [];
-        state.userSettings  = normalizeUserSettings(decryptedData.settings || state.userSettings);
-        state.dashboardConfig = normalizeDashboardConfig(decryptedData.dashboardConfig);
+        state.userSettings  = normalizeUserSettings(doc.settings || state.userSettings);
+        state.dashboardConfig = normalizeDashboardConfig(doc.dashboardConfig);
         migrateLocalConfigOnce();
-        if (decryptedData.profiles && Object.keys(decryptedData.profiles).length > 0) {
-            state.cloudProfiles = decryptedData.profiles;
-            state.syncStatus    = aggregateProfileSyncStatus(decryptedData.profiles);
+        if (doc.profiles && Object.keys(doc.profiles).length > 0) {
+            state.cloudProfiles = doc.profiles;
+            state.syncStatus    = aggregateProfileSyncStatus(doc.profiles);
         } else {
             state.cloudProfiles = {};
-            state.syncStatus    = decryptedData.syncStatus || { claude: null, chatgpt: null };
+            state.syncStatus    = doc.syncStatus || { claude: null, chatgpt: null };
+        }
+        // logs/threads: legacy/npoint → meegeleverd; V2 → lui via archive (hieronder).
+        if (Array.isArray(doc.logs)) {
+            state.userLogs    = doc.logs;
+            state.userThreads = doc.threads || [];
         }
         lastSyncTime = Date.now();
         retryCount   = 0;
@@ -4015,13 +4176,44 @@ function processRawCloudDoc(data, syncClient, isManual) {
         updateMobileSyncIndicator(true);
         stopSpinners();
         if (isManual) showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced!`);
+        // V2: laad logs/threads lui na (pace-overlays + Analyze-tab) en hertekenen.
+        if (!Array.isArray(doc.logs)) refreshPwaArchives(() => updateUI());
     } catch (err) {
-        console.error("[Cloud Sync] processRawCloudDoc error:", err);
+        console.error("[Cloud Sync] processNormalizedCloudDoc error:", err);
         stopSpinners();
         updateMobileSyncIndicator(false);
         if (isManual) showToast(`<i class="fa-solid fa-circle-exclamation" style="color: var(--accent-red);"></i> Sync failed: ${err.message || err}`);
         triggerSyncRetry();
     }
+}
+
+/* ---- Lui laden van archive (logs/threads) op de PWA (Fase 3) ----
+   De hot-stream (meta+status) bevat geen logs meer; die halen we per profiel
+   uit archive/<pid> en cachen ze (vervuiling op lastSeen). */
+let _archiveCache = {};   // pid -> { lastSeen, logs, threads }
+function _aggregateArchives(ids) {
+    let logs = [], threads = [];
+    ids.forEach(pid => { const c = _archiveCache[pid]; if (c) { logs = logs.concat(c.logs); threads = threads.concat(c.threads); } });
+    state.userLogs = logs;
+    state.userThreads = threads;
+}
+function refreshPwaArchives(cb) {
+    const cfg = isSyncClient();
+    if (!cfg || !cs2IsFirebase(cfg)) { if (cb) cb(); return; }
+    const profiles = state.cloudProfiles || {};
+    const ids = Object.keys(profiles);
+    if (ids.length === 0) { state.userLogs = []; state.userThreads = []; if (cb) cb(); return; }
+    // Alleen profielen herladen waarvan de lastSeen veranderd is (of nog niet gecached).
+    const need = ids.filter(pid => {
+        const c = _archiveCache[pid];
+        return !c || c.lastSeen !== (profiles[pid].lastSeen || 0);
+    });
+    if (need.length === 0) { _aggregateArchives(ids); if (cb) cb(); return; }
+    Promise.all(need.map(pid =>
+        cs2ReadArchive(cfg, pid).then(a => {
+            _archiveCache[pid] = { lastSeen: profiles[pid].lastSeen || 0, logs: a.logs, threads: a.threads };
+        }).catch(() => {})
+    )).then(() => { _aggregateArchives(ids); if (cb) cb(); });
 }
 
 // 2. Fetch and Render cloud sync data on Mobile clients
@@ -4049,8 +4241,8 @@ function loadCloudUserData(isManual = false) {
         if (icon) icon.classList.add("fa-spin");
     }
     
-    syncRelay(syncClient).read(syncClient.binId)
-        .then(data => { processRawCloudDoc(data, syncClient, isManual); })
+    cs2ReadState(syncClient)
+        .then(doc => { processNormalizedCloudDoc(doc, syncClient, isManual); })
         .catch(err => {
             console.error("[USAGE DASHBOARD] Cloud sync error:", err);
             const btnSyncAll    = document.getElementById("btn-sync-all");
@@ -4094,67 +4286,55 @@ function requestRemoteRefresh() {
     setRefreshStatus("requesting");
     showToast(`<i class="fa-solid fa-signal fa-fade"></i> Requesting remote PC sync...`);
 
-    // 1. Fetch current cloud data first
-    syncRelay(syncClient).read(syncClient.binId)
-    .then(data => {
-        if (!data || !data.data) throw new Error("Geen gecodeerde data gevonden.");
+    // Baseline: laatste sync-timestamps uit de huidige (geaggregeerde) state.
+    // De fast-poll gebruikt deze om écht-verse data te detecteren i.p.v. te
+    // vertrouwen op de refreshRequested-vlag (immuun voor caching/read-after-write).
+    const baseline = {
+        claude:  state.syncStatus?.claude?.lastSynced  || 0,
+        chatgpt: state.syncStatus?.chatgpt?.lastSynced || 0
+    };
 
-        // 2. Decrypt
-        const decryptedStr = CryptoSync.decrypt(data.data, syncClient.pairingKey);
-        const decryptedData = JSON.parse(decryptedStr);
-
-        // Bewaar baseline timestamps — fast-poll gebruikt deze om écht-verse data
-        // te detecteren in plaats van te vertrouwen op een refreshRequested-vlag
-        // die door npoint-caching of read-after-write inconsistenties verkeerd
-        // kan lijken.
-        const baseline = {
-            claude: decryptedData.syncStatus?.claude?.lastSynced || 0,
-            chatgpt: decryptedData.syncStatus?.chatgpt?.lastSynced || 0
-        };
-
-        // 3. Mark refresh requested!
-        decryptedData.refreshRequested = true;
-        decryptedData.refreshRequestedAt = Date.now();
-
-        // 4. Encrypt and write it back to the bin
-        const encryptedStr = CryptoSync.encrypt(JSON.stringify(decryptedData), syncClient.pairingKey);
-
-        return syncRelay(syncClient).write(syncClient.binId, { data: encryptedStr }).then(() => baseline);
-    })
-    .then((baseline) => {
-        console.log("[USAGE DASHBOARD Phone] POST refreshRequested:true verstuurd, verifieren...");
-
-        // 5a. Verifieer dat de relay onze write daadwerkelijk teruggeeft.
-        return new Promise(resolve => setTimeout(resolve, 800))
-            .then(() => syncRelay(syncClient).read(syncClient.binId))
-            .then(verify => {
-                verify = verify || {};
-                let verified = false;
-                try {
-                    const dec = JSON.parse(CryptoSync.decrypt(verify.data, syncClient.pairingKey));
-                    verified = dec.refreshRequested === true;
-                    console.log("[USAGE DASHBOARD Phone] Verificatie:", verified ? "OK (flag staat true in bin)" : "FAIL (flag niet zichtbaar)", dec);
-                } catch (e) {
-                    console.warn("[USAGE DASHBOARD Phone] Verificatie decrypt-fout:", e);
-                }
-                if (!verified) {
-                    setRefreshStatus("waiting");
-                    showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-yellow);"></i> Request sent — waiting for PC to respond.`);
-                } else {
-                    setRefreshStatus("pc-seen");
-                    showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC received the request — scraping in progress…`);
-                }
-                // 5b. Start fast polling ongeacht verificatie
-                remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
-                startFastPollingForRemoteSync(baseline);
-            });
-    })
-    .catch(err => {
+    const proceed = () => {
+        setRefreshStatus("pc-seen");
+        showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC received the request — scraping in progress…`);
+        remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
+        startFastPollingForRemoteSync(baseline);
+    };
+    const failed = (err) => {
         remoteRefreshInFlight = false;
         setRefreshStatus("error");
         console.error("[USAGE DASHBOARD Remote Scrape] Failed:", err);
         showToast(`<i class="fa-solid fa-triangle-exclamation" style="color: var(--accent-red);"></i> Remote trigger failed.`);
-    });
+    };
+
+    // V2 (Firebase): refresh-vlag in de meta-node (ETag) + legacy blob. ETag maakt
+    // de write betrouwbaar, dus de aparte verificatie-read is niet meer nodig.
+    if (cs2IsFirebase(syncClient)) {
+        const writes = [
+            cs2UpdateEnc(syncClient, "meta", (m) => {
+                m.schema = CS2_SCHEMA; m.refreshRequested = true; m.refreshRequestedAt = Date.now();
+                m.refreshClaimedBy = null; m.refreshClaimedAt = null; return m;
+            })
+        ];
+        if (CS2_WRITE_LEGACY) {
+            writes.push(cs2UpdateEnc(syncClient, "data", (d) => { d.refreshRequested = true; d.refreshRequestedAt = Date.now(); return d; }));
+        }
+        Promise.all(writes).then(proceed).catch(failed);
+        return;
+    }
+
+    // Legacy (npoint): enkel-blob read-modify-write.
+    syncRelay(syncClient).read(syncClient.binId)
+    .then(data => {
+        if (!data || !data.data) throw new Error("Geen gecodeerde data gevonden.");
+        const decryptedData = JSON.parse(CryptoSync.decrypt(data.data, syncClient.pairingKey));
+        decryptedData.refreshRequested = true;
+        decryptedData.refreshRequestedAt = Date.now();
+        const encryptedStr = CryptoSync.encrypt(JSON.stringify(decryptedData), syncClient.pairingKey);
+        return syncRelay(syncClient).write(syncClient.binId, { data: encryptedStr });
+    })
+    .then(proceed)
+    .catch(failed);
 }
 
 let fastPollIntervalId = null;
@@ -4181,33 +4361,35 @@ function startFastPollingForRemoteSync(baseline) {
     }
 
     // Interne helper: verwerk een cloud-lees-resultaat en retourneer true als sync klaar is.
-    function processPollResult(data) {
-        if (!data || !data.data) return false;
-        const syncClient = isSyncClient();
-        const decryptedStr  = CryptoSync.decrypt(data.data, syncClient.pairingKey);
-        const decryptedData = JSON.parse(decryptedStr);
-
-        const cloudClaude  = decryptedData.syncStatus?.claude?.lastSynced  || 0;
-        const cloudChatgpt = decryptedData.syncStatus?.chatgpt?.lastSynced || 0;
-        const flagCleared  = !decryptedData.refreshRequested;
+    function processPollResult(doc) {
+        if (!doc) return false;
+        const aggregated = (doc.profiles && Object.keys(doc.profiles).length)
+            ? aggregateProfileSyncStatus(doc.profiles)
+            : (doc.syncStatus || { claude: null, chatgpt: null });
+        const cloudClaude  = aggregated.claude?.lastSynced  || 0;
+        const cloudChatgpt = aggregated.chatgpt?.lastSynced || 0;
+        const flagCleared  = !doc.refreshRequested;
         const freshScrape  = cloudClaude > baselineClaude || cloudChatgpt > baselineChatgpt;
 
         // Update status op basis van claim-veld zodat de gebruiker "PC seen it" ziet.
-        if (decryptedData.refreshClaimedBy && decryptedData.refreshRequested) {
+        if (doc.refreshClaimedBy && doc.refreshRequested) {
             setRefreshStatus("scraping");
         }
 
         if (flagCleared && freshScrape) {
-            state.userLogs     = decryptedData.logs     || [];
-            state.userThreads  = decryptedData.threads  || [];
-            state.userSettings = normalizeUserSettings(decryptedData.settings || state.userSettings);
-            state.syncStatus   = decryptedData.syncStatus || { claude: null, chatgpt: null };
+            if (doc.profiles && Object.keys(doc.profiles).length) state.cloudProfiles = doc.profiles;
+            state.syncStatus   = aggregated;
+            state.userSettings = normalizeUserSettings(doc.settings || state.userSettings);
+            if (doc.dashboardConfig) state.dashboardConfig = normalizeDashboardConfig(doc.dashboardConfig);
+            if (Array.isArray(doc.logs)) { state.userLogs = doc.logs; state.userThreads = doc.threads || []; }
 
             lastSyncTime = Date.now();
             updateUI();
             updateMobileSyncIndicator(true);
             setRefreshStatus("done");
             showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Data synced live from your PC!`);
+            // V2: laad logs/threads lui na (pace + Analyze).
+            if (!Array.isArray(doc.logs)) refreshPwaArchives(() => updateUI());
             return true;
         }
         return false;
@@ -4241,17 +4423,17 @@ function startFastPollingForRemoteSync(baseline) {
                 }
                 setRefreshStatus("slow-polling");
                 const syncClient = isSyncClient();
-                syncRelay(syncClient).read(syncClient.binId)
-                .then(data => { if (processPollResult(data)) { clearInterval(fastPollIntervalId); fastPollIntervalId = null; } })
+                cs2ReadState(syncClient)
+                .then(doc => { if (processPollResult(doc)) { clearInterval(fastPollIntervalId); fastPollIntervalId = null; } })
                 .catch(err => console.warn("[Remote Poll Slow] error:", err));
             }, 15000);
             return;
         }
 
         const syncClient = isSyncClient();
-        syncRelay(syncClient).read(syncClient.binId)
-        .then(data => {
-            if (processPollResult(data)) {
+        cs2ReadState(syncClient)
+        .then(doc => {
+            if (processPollResult(doc)) {
                 clearInterval(fastPollIntervalId);
                 fastPollIntervalId = null;
             }
@@ -4326,12 +4508,34 @@ function pushUserDataToCloud() {
 
         const profileId    = res.lt_profile_id    || "default";
         const profileLabel = res.lt_profile_label || "Profile";
-        logSync(`[Cloud Sync App] Upload gestart (profiel: ${profileLabel}, bin: ${config.binId})...`);
+        const syncStatus   = state.syncStatus || {};
+        logSync(`[Cloud Sync App] Upload started (profile: ${profileLabel}, bin: ${config.binId})...`);
 
+        // ---- V2 (Firebase): gesplitste nodes — status + archive + meta(refresh clear) + legacy ----
+        if (cs2IsFirebase(config)) {
+            const writes = [
+                cs2UpdateEnc(config, `status/${profileId}`, (s) => {
+                    s.label = profileLabel; s.syncStatus = syncStatus; s.lastSeen = Date.now();
+                    s.pcOnline = true; delete s.lastError; return s;
+                }),
+                cs2PutEnc(config, `archive/${profileId}`, {
+                    logs: cs2PruneLogs(state.userLogs || []), threads: state.userThreads || []
+                }),
+                cs2UpdateEnc(config, "meta", (m) => {
+                    m.schema = CS2_SCHEMA; m.refreshRequested = false; m.refreshRequestedAt = null; return m;
+                })
+            ];
+            if (CS2_WRITE_LEGACY) {
+                writes.push(cs2UpdateEnc(config, "data", cs2LegacyBlobMutator(profileId, profileLabel, syncStatus)));
+            }
+            Promise.all(writes)
+                .then(() => logSync(`[Cloud Sync App] V2 upload ok (profile: ${profileLabel}).`))
+                .catch(err => logSync(`[Cloud Sync App FOUT] V2 upload mislukt: ${err.message || err}`));
+            return;
+        }
+
+        // ---- Legacy (npoint): enkel-blob read-modify-write ----
         const relay = syncRelay(config);
-        // READ-MODIFY-WRITE: lees de bestaande bin zodat we de andere profielen
-        // én de gedeelde dashboardConfig NIET overschrijven. (Voorheen werd hier de
-        // hele bin platgeslagen zonder profiles{} → data-verlies van andere profielen.)
         relay.read(config.binId).then(existing => {
             let cloudDoc = {};
             if (existing && existing.data) {
@@ -4341,29 +4545,20 @@ function pushUserDataToCloud() {
                     logSync(`[Cloud Sync App] Waarschuwing: bestaande data onleesbaar (${e.message}). Nieuw document.`);
                 }
             }
-
-            // Werk alleen het eigen profiel-slice bij
             if (!cloudDoc.profiles) cloudDoc.profiles = {};
-            cloudDoc.profiles[profileId] = {
-                label:      profileLabel,
-                syncStatus: state.syncStatus || {},
-                lastSeen:   Date.now()
-            };
-
-            // Legacy top-level velden voor backward-compat
+            cloudDoc.profiles[profileId] = { label: profileLabel, syncStatus: syncStatus, lastSeen: Date.now() };
             cloudDoc.logs               = state.userLogs     || [];
             cloudDoc.threads            = state.userThreads  || [];
             cloudDoc.settings           = state.userSettings || {};
-            cloudDoc.syncStatus         = state.syncStatus   || {};
+            cloudDoc.syncStatus         = syncStatus;
             cloudDoc.refreshRequested   = false;
             cloudDoc.refreshRequestedAt = null;
             // cloudDoc.dashboardConfig blijft bewust ongemoeid (gedeelde config).
-
             const encryptedStr = CryptoSync.encrypt(JSON.stringify(cloudDoc), config.pairingKey);
             return relay.write(config.binId, { data: encryptedStr });
         })
         .then(() => {
-            logSync(`[Cloud Sync App] Succesvol geüpload (profiel: ${profileLabel}).`);
+            logSync(`[Cloud Sync App] Successfully uploaded (profile: ${profileLabel}).`);
         })
         .catch(err => {
             logSync(`[Cloud Sync App FOUT] Upload mislukt: ${err.message || err}`);
@@ -4642,11 +4837,11 @@ function applyMobileSyncUI() {
                         <strong>Cloud Sync Status:</strong>
                         <span class="badge badge-success"><i class="fa-solid fa-cloud"></i> Actief</span>
                     </div>
-                    <p id="settings-mobile-sync-desc" class="desc mt-2">Dit dashboard is live gekoppeld aan de desktop extensie.</p>
+                    <p id="settings-mobile-sync-desc" class="desc mt-2">This dashboard is live linked to the desktop extension.</p>
                     <button type="button" id="btn-mobile-refresh" class="btn-primary w-100 mt-3" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         <i class="fa-solid fa-arrows-rotate"></i> Ververs handmatig
                     </button>
-                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Build info laden...</div>
+                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Loading build info...</div>
                 `;
                 
                 const btnRefresh = document.getElementById("btn-mobile-refresh");

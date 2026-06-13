@@ -1,131 +1,121 @@
-# Roadmap — Usage Dashboard → Multi-account & Team (v0.8+)
+# Roadmap - Usage Dashboard -> Multi-account & Team (v0.8+)
 
-Forward-looking plan. Bevat visie, het kerninzicht dat de architectuur bepaalt,
-haalbaarheid (wat wel/niet kan), de gekozen richting en een gefaseerde uitwerking.
-Dit document is leidend voor de grote update; details kunnen per fase bijgesteld worden.
+Forward-looking plan. This document covers the vision, the core architectural insight, feasibility, the chosen direction, and the phased rollout. It is the source of truth for the major update; details may change as each phase evolves.
 
-> **Stand van zaken (v0.25.0):** Fase 1 grotendeels af. Fase 2 deels live. Fase 5 (labels +
-> account-detectie) en Fase 6 (UI-herindeling: profiel-switcher in hoofdbalk, blokbeheer in
-> dropdown) zijn volledig opgeleverd. Fase 7 onboarding-wizard + `ONBOARDING.md` is live.
-> Firebase SSE-streaming actief (< 1s latency). Twee
-> Chrome-profielen live getest en gekoppeld. Open: drag-to-reorder, profielgroepen, Fase 3 analyse.
+> **Status (v0.26.0):** Phase 1 is mostly complete. Phase 2 is partially live. Phase 5 (labels + account detection) and Phase 6 (UI redesign: profile switcher in the top bar, block management in a dropdown) are fully delivered. Phase 7 onboarding wizard is live. Firebase SSE streaming is active (< 1s latency). **The improvement-plan datamodel-split (meta/status/archive) + ETag conditional writes shipped in v0.26.0** — the phone now streams only `meta`+`status` (~98% less mobile data) and concurrent writers no longer clobber each other. Open items: drag-to-reorder, profile groups, and the analysis database (Phase 3 below).
 
 ---
 
-## 1. Visie
+## 1. Vision
 
-Van een **persoonlijk** usage-tool naar een **multi-account & team** dashboard:
+Move from a **personal** usage tool to a **multi-account & team** dashboard:
 
-- Meerdere accounts volgen (bv. "GPT — Kevin", "GPT — Rob", later ook Claude), zowel binnen als buiten hetzelfde ChatGPT-team.
-- Individuele dashboards (kaarten) per profiel: **aan/uit togglen, tonen/verbergen en herordenen**.
-- **Gratis** blijven en zo **gebruiksvriendelijk** mogelijk delen.
-- **Globale updates via GitHub** (zonder dat iedereen handmatig moet bijwerken).
-- Later: **gedeelde database** voor diepere usage-analyse.
+- Track multiple accounts (for example "GPT - Kevin", "GPT - Rob", and later Claude too), both within and outside the same ChatGPT team.
+- Individual dashboards (cards) per profile: **toggle on/off, show/hide, and reorder**.
+- Stay **free** and as **user-friendly** as possible to share.
+- **Global updates through GitHub** so nobody has to update manually.
+- Later: a **shared database** for deeper usage analysis.
 
-## 2. Het kerninzicht (bepaalt alles)
+## 2. The core insight (this drives everything)
 
-De extensie scrapet de **account die op dat moment is ingelogd** in de browser.
-Gevolg: **één browser(profiel) = één ChatGPT-sessie.** Je kunt niet twee ChatGPT-accounts
-tegelijk uit één sessie lezen.
+The extension scrapes the **account currently logged in** in the browser.
+Consequence: **one browser profile = one ChatGPT session.** You cannot read two ChatGPT accounts from the same session at the same time.
 
-**Robuust model:** elk account wordt gevoed door een **eigen Chrome-profiel** (eigen login),
-of door een **eigen machine** (teamlid). Alle data komt samen in één gedeelde **database**,
-en het dashboard toont per account/persoon een kaart.
+**Robust model:** every account is fed by its **own Chrome profile** (its own login), or by its **own machine** (team member). All data comes together in one shared **database**, and the dashboard shows one card per account/person.
 
-Daarom is de database geen "fase 2 nice-to-have" maar het **fundament**.
+That is why the database is not a "nice to have in phase 2" but the **foundation**.
 
-## 3. Beta-beleid & versienummering
+## 3. Beta policy & versioning
 
-Het project is in **beta** zolang de eigenaar niet expliciet besluit tot publieke vrijgave. Alle versies `0.x.x` zijn intern/beta — functioneel volledig, maar niet officieel vrijgegeven. `v1.0.0` wordt **uitsluitend** getagd op expliciete eigenaarsbeslissing na volledige test en goedkeuring (bv. bij keuze voor Web Store-distributie of brede teamdeling). Nooit automatisch bumpen naar 1.0.0. Zie het versie-schema in `project_summary.md`.
+The project stays in **beta** until the owner explicitly decides it is ready for public release. All versions `0.x.x` are internal/beta - functionally complete, but not officially released. `v1.0.0` is **only** tagged after an explicit owner decision, full testing, and approval (for example if Web Store distribution or broad team sharing is chosen). Never auto-bump to 1.0.0. See the version scheme in `project_summary.md`.
 
-## 4. Gekozen richting (op basis van beslissingen)
+## 4. Chosen direction (based on decisions)
 
-| Beslissing | Keuze |
+| Decision | Choice |
 |---|---|
-| Profiel-model | **Vooral ikzelf, meerdere accounts** (Chrome-profielen). Team-delen volgt later op hetzelfde fundament. |
-| Distributie | **Gratis + gebruiksvriendelijk** → dunne scraper-extensie + dashboard-UI op de PWA (GitHub Pages). |
-| Database | **Naar voren gehaald** → Firebase als fundament. |
+| Profile model | **Mainly myself, multiple accounts** (Chrome profiles). Team sharing follows later on the same foundation. |
+| Distribution | **Free + user-friendly** -> thin scraper extension + dashboard UI on the PWA (GitHub Pages). |
+| Database | **Pulled forward** -> Firebase as the foundation. |
 
-### Aanbevolen doelarchitectuur
+### Recommended target architecture
 
+```text
+┌──────────────────────────────┐      ┌──────────────────────────────┐
+│  Thin scraper extension       │      │  Dashboard UI (PWA)          │
+│  (per Chrome profile)        │      │  GitHub Pages - auto-update  │
+│  • content.js + background    │      │  • shows all profile cards   │
+│  • scrapes active session     │      │  • toggle/reorder/analyze    │
+│  • writes to Firebase         │      │  • reads from Firebase       │
+└──────────────┬───────────────┘      └──────────────┬───────────────┘
+               │  write                               │ read (realtime)
+               ▼                                      ▼
+        ┌──────────────────────────────────────────────────────────┐
+        │   Firebase (free) - profiles, usage, history             │
+        │   E2E where useful; security rules per profile/team      │
+        └──────────────────────────────────────────────────────────┘
 ```
-┌────────────────────────────┐      ┌─────────────────────────────┐
-│  Dunne scraper-extensie     │      │  Dashboard-UI (PWA)         │
-│  (per Chrome-profiel)       │      │  GitHub Pages — auto-update │
-│  • content.js + background  │      │  • toont alle profiel-kaarten│
-│  • scrapet actieve sessie   │      │  • toggle/herorden/analyse  │
-│  • schrijft naar Firebase   │      │  • leest uit Firebase       │
-└─────────────┬───────────────┘      └──────────────┬──────────────┘
-              │  write                                │ read (realtime)
-              ▼                                       ▼
-        ┌──────────────────────────────────────────────────┐
-        │   Firebase (gratis) — profielen, usage, historie   │
-        │   E2E waar zinvol; security rules per profiel/team │
-        └──────────────────────────────────────────────────┘
-```
 
-**Waarom dit gratis + gebruiksvriendelijk is:**
-- UI-updates → gratis & automatisch via GitHub Pages (geen Web Store-kosten).
-- De extensie wordt klein en stabiel → bijna nooit handmatig bijwerken.
-- De PWA is de viewer; de extensie alleen de "voeler". Beide delen dezelfde codebasis.
+**Why this is free + user-friendly:**
+- UI updates -> free and automatic through GitHub Pages (no Web Store cost).
+- The extension stays small and stable -> almost never needs manual updates.
+- The PWA is the viewer; the extension is only the "sensor". Both share the same codebase.
 
-> Optioneel later: extensie naar de **Chrome Web Store (unlisted, eenmalig ±$5)** voor
-> 1-klik installatie + auto-update. Niet nodig om te starten; puur extra gemak.
+> Optional later: move the extension to the **Chrome Web Store (unlisted, one-time approx. $5)** for one-click installation + auto-updates. Not needed to start; just extra convenience.
 
-## 4. Haalbaarheid — wat kan wel/niet
+## 5. Feasibility - what can and cannot be done
 
-### Kan (goed)
-- Meerdere benoemde profiel-kaarten per provider (Kevin, Rob, …).
-- Meerdere accounts op één PC via **aparte Chrome-profielen**.
-- Profiel toevoegen/hernoemen/verwijderen; klik op provider-logo → "profiel koppelen".
-- Kaarten **togglen (tonen/verbergen)** en **herordenen** (drag-and-drop, lokaal gebundelde lib i.v.m. MV3).
-- Per-persoon **profielgroepen** ("folders"-gevoel) + **JSON export/import**.
-- Globale UI-updates via GitHub (PWA).
-- Gedeelde database + later teamtracking + analyse.
+### Can do (well)
+- Multiple named profile cards per provider (Kevin, Rob, ...).
+- Multiple accounts on one PC via **separate Chrome profiles**.
+- Add/rename/remove profiles; click the provider logo -> "link profile".
+- Toggle cards on/off and reorder them (drag-and-drop, bundled local lib because of MV3).
+- Per-person **profile groups** ("folder feel") + **JSON export/import**.
+- Global UI updates through GitHub (PWA).
+- Shared database + later team tracking + analysis.
 
-### Kan niet / niet zo
-- **Accounts automatisch inloggen/koppelen** — verboden + technisch niet hoe scraping werkt. "Koppelen" = profiel benoemen en de juiste sessie ernaartoe laten scrapen.
-- **Twee accounts van dezelfde provider uit één sessie** — Chrome heeft één sessie per site per profiel → aparte Chrome-profielen nodig.
-- **Per-teamlid limieten zien vanuit één admin-account** — providers tonen dat niet scrapebaar; ieder trackt zijn eigen.
-- **Echte OS-mappen vanuit het dashboard** — sandbox; vervangen door profielgroepen + JSON export/import.
-- **Auto-update van een "unpacked" extensie via GitHub** — bestaat niet voor gewone gebruikers; daarom UI op PWA + (optioneel) Web Store.
+### Cannot / not like this
+- **Automatically logging in/linking accounts** - forbidden and not how scraping works. "Linking" means naming the profile and letting the correct session be scraped.
+- **Two accounts from the same provider in one session** - Chrome has one session per site per profile -> separate Chrome profiles are required.
+- **Showing per-team-member limits from one admin account** - providers do not expose that in a scrapable way; each person tracks their own.
+- **Real OS folders from the dashboard** - sandbox limitation; replace this with profile groups + JSON export/import.
+- **Auto-updating an "unpacked" extension through GitHub** - not available for normal users; therefore the UI lives on the PWA + optionally the Web Store.
 
-## 5. Gefaseerd plan
+## 6. Phased plan
 
-### Fase 1 — Database-fundament + multi-account profielen + kaartbeheer  ✅ grotendeels af
-- ✅ Firebase erin als opslag (primair, npoint als fallback), achter de bestaande provider-laag.
-- ✅ **Multi-profiel**: elk Chrome-profiel pusht onder eigen `profileId`; dashboard toont één kaart per (profiel × abonnement).
-- ✅ **Profiel-beheer**: toevoegen via invite-link, hernoemen, verwijderen (✕ op de profiel-tab).
-- ✅ **Toggle tonen/verbergen** per kaart + auto-zichtbaarheid op basis van data. Sinds v0.18.0 **gesynct over alle profielen** via gedeelde `dashboardConfig` (configureer op het ene profiel → zichtbaar op de andere).
-- ⬜ **drag-to-reorden** van kaarten — nog te doen.
-- ⬜ **Profielgroepen** ("folders"-gevoel) — nog te doen.
-- ✅ **Multi-account via Chrome-profielen**: scraper tagt data aan het ingelogde profiel.
-- ✅ Werkt in zowel extensie als PWA (gedeelde code).
+### Phase 1 - Database foundation + multi-account profiles + card management  - mostly done
+- Firebase as storage (primary, npoint as fallback), behind the existing provider layer.
+- **Multi-profile**: each Chrome profile pushes under its own `profileId`; the dashboard shows one card per (profile x subscription).
+- **Profile management**: add via invite link, rename, remove (x on the profile tab).
+- **Show/hide toggle** per card + auto-visibility based on data. Since v0.18.0 this is **synced across all profiles** via shared `dashboardConfig` (configure on one profile -> visible on the other).
+- Drag-to-reorder cards - still to do.
+- **Profile groups** ("folder feel") - still to do.
+- **Multi-account via Chrome profiles**: scraper tags data to the logged-in profile.
+- Works in both the extension and the PWA (shared code).
 
-### Fase 2 — Dashboard-UI als primaire PWA + team-delen  🔶 deels live
-- ✅ PWA (GitHub Pages) leest uit Firebase → gratis globale updates.
-- ✅ Auto-login extensiemodus; de extensie schrijft per profiel naar de cloud.
-- ✅ **Team-delen (basis)**: anderen accepteren een invite-link, schrijven hun profiel naar de gedeelde bin en verschijnen als kaarten.
-- ⬜ Selectie/groepen van welke profielen je toont (per-persoon groepen).
+### Phase 2 - Dashboard UI as the primary PWA + team sharing  - partially live
+- PWA (GitHub Pages) reads from Firebase -> free global updates.
+- Auto-login extension mode; the extension writes per profile to the cloud.
+- **Basic team sharing**: others accept an invite link, write their profile to the shared bin, and appear as cards.
+- Selection/groups for which profiles you show (per-person groups).
 
-### Fase 3 — Analyse-database & inzichten
-- Historische usage per profiel/model/tijd; "waar gaat mijn/ons verbruik aan op".
-- Grafieken, trends, teamvergelijking, exports.
+### Phase 3 - Analysis database & insights
+- Historical usage per profile/model/time; "what is my/our usage going toward".
+- Charts, trends, team comparison, exports.
 
-### Taal
-- **Nu: Engels-first** — de hele zichtbare UI is naar het Engels omgezet zodat het hele team ermee kan werken.
-- **Later: NL/EN-keuze (i18n)** — een taalschakelaar; teksten in een centrale strings-tabel zodat uitbreiden naar meer talen makkelijk is.
-- De scraper (`content.js`) blijft **meertalig matchen** (EN + NL woorden) zodat het uitlezen werkt ongeacht de taal van het Claude/ChatGPT-account.
+### Language
+- **Now: English-first** - the entire visible UI has been translated to English so the whole team can use it.
+- **Later: NL/EN choice (i18n)** - a language switcher; text in a central strings table so expanding to more languages is easy.
+- The scraper (`content.js`) remains **multi-lingual** (EN + NL words) so scraping still works regardless of the Claude/ChatGPT account language.
 
-## 6. Wat ik van jou nodig heb
-- **Eenmalig een Firebase-project aanmaken** (±10 min). Ik lever een klik-voor-klik stappenplan + de config om te plakken. Ik kan zelf geen accounts aanmaken (veiligheidsregel).
-- Bevestiging per fase voordat ik de volgende start.
+## 7. What I need from you
+- **One-time Firebase project setup** (about 10 minutes). I will provide a click-by-click guide plus the config to paste. I cannot create accounts myself (safety rule).
+- Confirmation per phase before I start the next one.
 
-## 7. Veiligheid & privacy
-- Geen automatische logins; scraping leest alleen de actieve sessie.
-- Firebase security rules per profiel/team; gevoelige sync-payloads versleuteld.
-- Publieke PWA-hosting blijft veilig zolang data versleuteld/afgeschermd is.
+## 8. Security & privacy
+- No automatic logins; scraping only reads the active session.
+- Firebase security rules per profile/team; sensitive sync payloads are encrypted.
+- Public PWA hosting remains safe as long as the data is encrypted and access-controlled.
 
 ---
 
-*Status (v0.25.0): Fase 1 grotendeels af, Fase 2 deels live, Fase 5 + 6 volledig opgeleverd, Fase 7 onboarding live. Resterend: drag-to-reorder & profielgroepen (Fase 1/2), analyse-database (Fase 3), eventuele AES-GCM-migratie als aparte fase.*
+*Status (v0.25.0): Phase 1 mostly complete, Phase 2 partially live, Phase 5 + 6 fully delivered, Phase 7 onboarding live. Remaining: drag-to-reorder and profile groups (Phase 1/2), analysis database (Phase 3), and a possible AES-GCM migration as a separate phase.*

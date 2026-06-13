@@ -4,6 +4,40 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.26.0] — 2026-06-13
+
+### Fase 3 — Datamodel-split (meta/status/archive) + ETag conditional writes
+
+De grootste fase uit het verbeterplan. Het cloud-document werd voorheen als één
+versleutelde blob (~255 KB) bij élke wijziging volledig gestreamd naar de telefoon.
+Dat is nu opgesplitst in losse Firebase-nodes onder `profiles/<binId>/`:
+
+- **`meta`** — gedeeld: `dashboardConfig` + refresh-vlaggen. ETag-bewaakt (conditional
+  writes met `if-match`, retry bij 412) zodat gelijktijdige schrijvers elkaar niet meer
+  overschrijven. De refresh-claim is hierdoor atomair.
+- **`status/<pid>`** — per profiel: `syncStatus`, `lastSeen`, `pcOnline`, `lastError`.
+  Elk profiel schrijft alleen zijn eigen node → geen onderlinge clobbering.
+- **`archive/<pid>`** — per profiel: `logs`/`threads` (de zware historie). Wordt **lui**
+  geladen (alleen voor pace-overlays + de Analyze-tab), niet meer in de hot-stream.
+- **`data`** — legacy slim-blob (zonder logs/threads) blijft geschreven zolang niet alle
+  clients geüpgraded zijn, zodat niet-herladen extensies blijven werken.
+
+**Resultaat:** de telefoon streamt nu alleen `meta` + `status` (enkele KB i.p.v. 255 KB
+per update — ~98% minder mobiel dataverkeer) en blijft realtime via SSE.
+
+### Backward-compatible migratie
+Nieuwe clients lezen `meta`+`status` met automatische terugval op de oude `data`-blob,
+zodat bestaande bins zonder migratiestap blijven werken; de eerste schrijfactie migreert
+de bin naar het nieuwe model. npoint blijft het oude enkel-blob model gebruiken (de split
+is Firebase-only). Logs worden bij het wegschrijven ingekort tot 90 dagen / max 2000 items.
+
+### Getest
+`node --check` op beide bestanden, 9 data-laag-tests tegen een wegwerp-Firebase-bin
+(split write/read, geen cross-clobber, ETag-retry bij gelijktijdige writes, legacy-fallback)
+en een browser-test die bevestigt dat de `if-match` conditional writes cross-origin werken.
+
+---
+
 ## [0.25.3] — 2026-06-11
 
 ### Bugfix — ChatGPT "5 hour usage limit" niet herkend door scraper
