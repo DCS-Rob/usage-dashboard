@@ -4,6 +4,33 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.26.1] — 2026-07-10
+
+### Fix — verouderde/onjuiste Claude-percentages bij remote refresh
+
+Na de UI-redesign van claude.ai (Settings/Usage draait nu als een zware SPA-modal
+i.p.v. een lichte losse pagina) leverde een remote refresh-verzoek (telefoon of
+"Refresh"-knop) soms een duidelijk verkeerd percentage op, bv. 50% terwijl de echte
+waarde 18% was.
+
+**Oorzaken en fix:**
+- `background.js` opende bij een refresh-verzoek een onzichtbare achtergrondtab naar
+  Claude's usage-pagina en sloot die na 8.5s. Achtergrondtabs worden door Chrome
+  getroteld (timers/rendering vertraagd), en de zwaardere SPA had die tijd vaak niet
+  genoeg om de echte usage-API-data op te halen. Timeout verhoogd naar 16s (en de
+  bijbehorende foutmelding-check naar 20s).
+- `content.js` stopte meteen met scannen zodra er één percentage gevonden werd — ook
+  als dat een tussentijds/cached cijfer was vóór de echte API-data binnenkwam. Nieuwe
+  `observeAndScrapeStable()` wacht nu tot de pagina ~900ms stabiel is (of max. 9s)
+  voordat het laatst gemeten resultaat definitief verstuurd wordt.
+
+### Bestanden
+- `background.js` — `triggerScrapeFromBackground`: langere achtergrondtab-timeout.
+- `content.js` — nieuwe `observeAndScrapeStable()`; `scrapeClaudeUsage()` buffert nu
+  tussentijdse resultaten i.p.v. ze direct te versturen.
+
+---
+
 ## [0.26.0] — 2026-06-13
 
 ### Fase 3 — Datamodel-split (meta/status/archive) + ETag conditional writes

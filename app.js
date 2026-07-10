@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.26.0";
+const APP_VERSION = "0.26.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -142,13 +142,15 @@ let state = {
         claude: { limitTokens: 200000, windowHours: 5 },
         chatgpt: { limitMessages: 120, windowHours: 3 },
         gemini: { limitMessages: 100, windowHours: 24 },
+        zai: { limitMessages: 100, windowHours: 24 },
         // Globale zichtbaarheid per blok (geldt voor het hele dashboard).
         // Per-profiel overrides worden apart opgeslagen in de cloud-doc.
-        visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true }
+        visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true, zai: true }
     },
     syncStatus: {
         claude: null,
-        chatgpt: null
+        chatgpt: null,
+        zai: null
     },
     // Multi-profile: slaat alle profielen op uit de cloud bin
     // { "pid-abc1": { label, syncStatus, lastSeen }, ... }
@@ -672,12 +674,14 @@ function normalizeUserSettings(s) {
     if (!s.claude)  s.claude  = { limitTokens: 200000, windowHours: 5 };
     if (!s.chatgpt) s.chatgpt = { limitMessages: 120, windowHours: 3 };
     if (!s.gemini)  s.gemini  = { limitMessages: 100, windowHours: 24 };
+    if (!s.zai)     s.zai     = { limitMessages: 100, windowHours: 24 };
     const vb = s.visibleBlocks || {};
     s.visibleBlocks = {
         claude:  vb.claude  !== false,
         chatgpt: vb.chatgpt !== false,
         codex:   vb.codex   !== false,
-        gemini:  vb.gemini  !== false
+        gemini:  vb.gemini  !== false,
+        zai:     vb.zai     !== false
     };
     return s;
 }
@@ -697,6 +701,7 @@ function hasProviderData(provider, syncStatus, logs) {
     // ChatGPT omvat ook de maandelijkse limiet (intern: syncStatus.codex) voor gratis/personal accounts
     if (provider === "chatgpt") return !!syncStatus.chatgpt || !!syncStatus.codex || logs.some(l => l.model === "chatgpt");
     if (provider === "gemini")  return !!syncStatus.gemini  || logs.some(l => l.model === "gemini");
+    if (provider === "zai")     return !!syncStatus.zai     || logs.some(l => l.model === "zai");
     return false;
 }
 
@@ -714,7 +719,7 @@ function getCurrentProfileContext() {
 //  - respecteert de globale Settings-toggle én de per-profiel handmatige verberging
 function applyBlockVisibility() {
     const ctx = getCurrentProfileContext();
-    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini" };
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini", zai: "card-zai" };
     const hiddenWithData = [];
     Object.keys(map).forEach(provider => {
         const el = document.getElementById(map[provider]);
@@ -735,7 +740,7 @@ function applyBlockVisibility() {
 
 // Voegt één keer een verberg-knop (oogje) toe aan elke statische card.
 function addStaticHideButtons() {
-    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini" };
+    const map = { claude: "card-claude", chatgpt: "card-chatgpt", gemini: "card-gemini", zai: "card-zai" };
     Object.keys(map).forEach(provider => {
         const card = document.getElementById(map[provider]);
         if (!card) return;
@@ -767,6 +772,7 @@ function getProviderLoginUrl(provider) {
     if (provider === "claude")  return "https://claude.ai/settings/usage";
     if (provider === "chatgpt") return "https://chatgpt.com/codex/cloud/settings/analytics#usage";
     if (provider === "gemini")  return "https://gemini.google.com/app";
+    if (provider === "zai")     return "https://z.ai/manage-apikey/coding-plan/personal/usage";
     return null;
 }
 
@@ -1262,7 +1268,7 @@ async function buildAccountInviteFromOnboarding() {
 
 // Houdt de checkboxes in Settings in sync met de GEDEELDE config (providersOff).
 function renderVisibleBlockToggles() {
-    ["claude", "chatgpt", "gemini"].forEach(provider => {
+    ["claude", "chatgpt", "gemini", "zai"].forEach(provider => {
         const cb = document.getElementById(`vb-${provider}`);
         if (cb) cb.checked = !isProviderOff(provider);
     });
@@ -1323,9 +1329,10 @@ function createDefaultUserProfile(passHash = null) {
         settings: {
             claude: { limitTokens: 200000, windowHours: 5 },
             chatgpt: { limitMessages: 120, windowHours: 3 },
-            gemini: { limitMessages: 100, windowHours: 24 }
+            gemini: { limitMessages: 100, windowHours: 24 },
+            zai: { limitMessages: 100, windowHours: 24 }
         },
-        syncStatus: { claude: null, chatgpt: null }
+        syncStatus: { claude: null, chatgpt: null, zai: null }
     };
 }
 
@@ -1782,6 +1789,35 @@ function renderDashboardProgress() {
         geminiTimePct = 0;
     }
     updateParallelPace("gemini", "pace", geminiPct, geminiTimePct);
+    // --- E. Z.AI CALCULATIONS ---
+    const zaiSettings = state.userSettings.zai;
+    const zaiWindowMs = zaiSettings.windowHours * 60 * 60 * 1000;
+    const recentZai = state.userLogs.filter(l => l.model === "zai" && (now - l.timestamp) < zaiWindowMs);
+    const zaiUsed = recentZai.length;
+    const zaiSync = state.syncStatus.zai;
+    const zaiPct = (zaiSync && zaiSync.pctRemaining5h !== undefined && zaiSync.pctRemaining5h !== null)
+        ? Math.max(0, Math.min(100, zaiSync.pctRemaining5h))
+        : Math.max(0, 100 - Math.round((zaiUsed / zaiSettings.limitMessages) * 100));
+
+    document.getElementById("pct-zai").innerText = `${zaiPct}%`;
+    document.getElementById("msg-limit-zai").innerText = `${Math.max(0, zaiSettings.limitMessages - zaiUsed)} / ${zaiSettings.limitMessages}`;
+    document.getElementById("msg-used-zai").innerText = zaiUsed;
+    setProgressRing("ring-zai", zaiPct);
+
+    let zaiTimePct = 0;
+    if (zaiSync && zaiSync.reset5hAt) {
+        const timeLeftMs = Math.max(0, zaiSync.reset5hAt - now);
+        document.getElementById("timer-zai").innerText = timeLeftMs > 0 ? formatTimeMs(timeLeftMs) : "Resetting...";
+        zaiTimePct = Math.min(100, (timeLeftMs / (5 * 60 * 60 * 1000)) * 100);
+    } else if (recentZai.length > 0 && zaiPct < 99) {
+        const oldestLog = recentZai[0];
+        const timeLeftMs = zaiWindowMs - (now - oldestLog.timestamp);
+        document.getElementById("timer-zai").innerText = formatTimeMs(timeLeftMs);
+        zaiTimePct = (timeLeftMs / zaiWindowMs) * 100;
+    } else {
+        document.getElementById("timer-zai").innerText = "Fully Free";
+    }
+    updateParallelPace("zai", "pace", zaiPct, zaiTimePct);
 
     // --- D. CHATGPT MONTHLY (free/personal accounts) — zelfde groene ChatGPT-card ---
     // De maandelijkse gebruikslimiet (intern opgeslagen als syncStatus.codex) hoort bij
@@ -1874,6 +1910,18 @@ function updateScraperStatusLabels() {
         }
     }
 
+    const zaiStatus = document.getElementById("settings-status-zai");
+    if (zaiStatus) {
+        const zaiSync = state.syncStatus.zai;
+        if (zaiSync && zaiSync.lastSynced) {
+            zaiStatus.className = getStatusClass(zaiSync.lastSynced);
+            zaiStatus.innerText = "Connected (" + formatTimeAgo(zaiSync.lastSynced) + ")";
+        } else {
+            zaiStatus.className = "badge";
+            zaiStatus.innerText = "Inactive";
+        }
+    }
+
     // Render Sync Logs
     const logBox = document.getElementById("sync-debug-logs");
     if (logBox && typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
@@ -1928,6 +1976,14 @@ function setProgressRing(ringId, percent) {
 /* ==========================================================================
    LOG TABLE & RECENT LOGS FEED RENDERER
    ========================================================================== */
+function providerDisplayName(model) {
+    return PROVIDER_META[model]?.name || model;
+}
+
+function providerUsageText(log) {
+    return log.model === "claude" ? `${formatNumber(log.tokens)} tokens` : "1 message";
+}
+
 function renderLogsList() {
     const now = Date.now();
     const feedList = document.getElementById("log-feed-list");
@@ -1955,7 +2011,7 @@ function renderLogsList() {
                 <div class="log-item-left">
                     <span class="model-indicator indicator-${l.model}"></span>
                     <div class="log-item-meta">
-                        <span class="model-name">${l.model === "claude" ? "Claude Pro" : (l.model === "chatgpt" ? "ChatGPT" : "Gemini")}</span>
+                        <span class="model-name">${providerDisplayName(l.model)}</span>
                         <span class="thread-name">${description}</span>
                     </div>
                 </div>
@@ -1987,9 +2043,9 @@ function renderLogsList() {
             tr.innerHTML = `
                 <td><input type="checkbox" class="log-checkbox" data-id="${l.id}"></td>
                 <td class="font-mono">${new Date(l.timestamp).toLocaleString("en-GB")}</td>
-                <td><span class="badge badge-${l.model}">${l.model === "claude" ? "Claude Pro" : (l.model === "chatgpt" ? "ChatGPT" : "Gemini")}</span></td>
+                <td><span class="badge badge-${l.model}">${providerDisplayName(l.model)}</span></td>
                 <td>${noteText}</td>
-                <td class="font-mono">${l.model === "claude" ? `${formatNumber(l.tokens)} tokens` : "1 message"}</td>
+                <td class="font-mono">${providerUsageText(l)}</td>
                 <td>
                     <button class="btn-text text-red btn-delete-single-log" data-id="${l.id}">
                         <i class="fa-solid fa-trash-can"></i>
@@ -2015,6 +2071,7 @@ function renderAnalyticsChart() {
     const chatgptData = [];
     const claudeData = [];
     const geminiData = [];
+    const zaiData = [];
     
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
@@ -2031,6 +2088,7 @@ function renderAnalyticsChart() {
         chatgptData.push(dayLogs.filter(l => l.model === "chatgpt").length);
         claudeData.push(dayLogs.filter(l => l.model === "claude").length);
         geminiData.push(dayLogs.filter(l => l.model === "gemini").length);
+        zaiData.push(dayLogs.filter(l => l.model === "zai").length);
     }
     
     if (usageChartInstance) {
@@ -2039,7 +2097,7 @@ function renderAnalyticsChart() {
 
     if (typeof Chart === "undefined") {
         console.warn("[USAGE DASHBOARD] Chart.js is niet geladen. Analytics-grafiek wordt overgeslagen.");
-        updateAnalyticsStats(days, claudeData, chatgptData, geminiData);
+        updateAnalyticsStats(days, claudeData, chatgptData, geminiData, zaiData);
         return;
     }
     
@@ -2071,6 +2129,14 @@ function renderAnalyticsChart() {
                     borderColor: "rgba(99, 102, 241, 0.8)",
                     borderWidth: 1,
                     borderRadius: 4
+                },
+                {
+                    label: "Z.Ai Prompts",
+                    data: zaiData,
+                    backgroundColor: "rgba(34, 211, 238, 0.35)",
+                    borderColor: "rgba(34, 211, 238, 0.8)",
+                    borderWidth: 1,
+                    borderRadius: 4
                 }
             ]
         },
@@ -2095,10 +2161,10 @@ function renderAnalyticsChart() {
         }
     });
     
-    updateAnalyticsStats(days, claudeData, chatgptData, geminiData);
+    updateAnalyticsStats(days, claudeData, chatgptData, geminiData, zaiData);
 }
 
-function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
+function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData, zaiData = []) {
     const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
     const last7DaysLogs = state.userLogs.filter(l => l.timestamp >= sevenDaysAgo);
@@ -2106,6 +2172,7 @@ function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
     let totalClaudeTokens = 0;
     let totalChatGPTPrompts = 0;
     let totalGeminiPrompts = 0;
+    let totalZaiPrompts = 0;
     
     last7DaysLogs.forEach(l => {
         if (l.model === "claude") {
@@ -2114,12 +2181,15 @@ function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
             totalChatGPTPrompts++;
         } else if (l.model === "gemini") {
             totalGeminiPrompts++;
+        } else if (l.model === "zai") {
+            totalZaiPrompts++;
         }
     });
 
     const avgClaude = Math.round(totalClaudeTokens / 7);
     const avgChatGPT = (totalChatGPTPrompts / 7).toFixed(1);
     const avgGemini = (totalGeminiPrompts / 7).toFixed(1);
+    const avgZai = (totalZaiPrompts / 7).toFixed(1);
 
     const cTotal = document.getElementById("stats-total-claude");
     const cAvg = document.getElementById("stats-avg-claude");
@@ -2142,11 +2212,18 @@ function updateAnalyticsStats(days, claudeCounts, chatgptData, geminiData) {
         gemAvg.innerText = `Avg. ${avgGemini} / day`;
     }
 
+    const zaiTotal = document.getElementById("stats-total-zai");
+    const zaiAvg = document.getElementById("stats-avg-zai");
+    if (zaiTotal && zaiAvg) {
+        zaiTotal.innerText = totalZaiPrompts + " p";
+        zaiAvg.innerText = `Avg. ${avgZai} / day`;
+    }
+
     // Peak day calculation
     let maxLogs = 0;
     let peakDayLabel = "No data";
     for (let i = 0; i < 7; i++) {
-        const count = claudeCounts[i] + chatgptData[i] + geminiData[i];
+        const count = claudeCounts[i] + chatgptData[i] + geminiData[i] + (zaiData[i] || 0);
         if (count > maxLogs) {
             maxLogs = count;
             peakDayLabel = days[i];
@@ -2321,7 +2398,7 @@ function setupEventListeners() {
             state.currentUser = null;
             state.userLogs = [];
             state.userThreads = [];
-            state.syncStatus = { claude: null, chatgpt: null };
+            state.syncStatus = { claude: null, chatgpt: null, zai: null };
             showView("login");
             document.getElementById("username").value = "";
             document.getElementById("password").value = "";
@@ -2445,6 +2522,8 @@ function setupEventListeners() {
         
         state.userSettings.gemini.limitMessages = parseInt(document.getElementById("limit-gemini-msg").value);
         state.userSettings.gemini.windowHours = parseInt(document.getElementById("limit-gemini-hours").value);
+        state.userSettings.zai.limitMessages = parseInt(document.getElementById("limit-zai-msg").value);
+        state.userSettings.zai.windowHours = parseInt(document.getElementById("limit-zai-hours").value);
         
         saveUserData(() => {
             alert("Limits saved successfully!");
@@ -2511,7 +2590,8 @@ function setupEventListeners() {
                 claude: { limitTokens: 200000, windowHours: 5 },
                 chatgpt: { limitMessages: 120, windowHours: 3 },
                 gemini: { limitMessages: 100, windowHours: 24 },
-                visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true }
+                zai: { limitMessages: 100, windowHours: 24 },
+                visibleBlocks: { claude: true, chatgpt: true, codex: true, gemini: true, zai: true }
             };
             saveUserData(() => {
                 updateUI();
@@ -3174,6 +3254,7 @@ let retryTimeoutId = null;
 function aggregateProfileSyncStatus(profiles) {
     let bestClaude = null;   // laagste pctRemaining (meest kritiek)
     let bestChatgpt = null;  // laagste pctRemaining5h
+    let bestZai = null;      // laagste pctRemaining5h
 
     const staleThresholdMs = 6 * 60 * 60 * 1000; // 6 uur = stale
     const now = Date.now();
@@ -3198,11 +3279,21 @@ function aggregateProfileSyncStatus(profiles) {
                 bestChatgpt = { ...g };
             }
         }
+        // Z.Ai
+        if (profile.syncStatus && profile.syncStatus.zai) {
+            const z = profile.syncStatus.zai;
+            const zPct = z.pctRemaining5h !== undefined ? z.pctRemaining5h : 100;
+            const curPct = bestZai && bestZai.pctRemaining5h !== undefined ? bestZai.pctRemaining5h : 100;
+            if (!bestZai || zPct < curPct) {
+                bestZai = { ...z };
+            }
+        }
     }
 
     return {
         claude:  bestClaude  || null,
-        chatgpt: bestChatgpt || null
+        chatgpt: bestChatgpt || null,
+        zai:     bestZai     || null
     };
 }
 
@@ -3443,9 +3534,10 @@ function renderProfileBar() {
 const PROVIDER_META = {
     claude:  { name: "Claude Pro",      meta: "Anthropic",  icon: "fa-compass-drafting",    cls: "claude" },
     chatgpt: { name: "ChatGPT",         meta: "OpenAI",     icon: "fa-robot",               cls: "chatgpt" },
-    gemini:  { name: "Gemini Advanced", meta: "Google",     icon: "fa-wand-magic-sparkles", cls: "gemini" }
+    gemini:  { name: "Gemini Advanced", meta: "Google",     icon: "fa-wand-magic-sparkles", cls: "gemini" },
+    zai:     { name: "Z.Ai",            meta: "GLM",        icon: "fa-brain",               cls: "zai" }
 };
-const PROVIDER_ORDER = ["claude", "chatgpt", "gemini"];
+const PROVIDER_ORDER = ["claude", "chatgpt", "gemini", "zai"];
 
 /* --------------------------------------------------------------------------
    GEDEELDE DASHBOARD-CONFIG (gesynct via de cloud-bin)
@@ -3790,7 +3882,15 @@ function computeProviderPace(provider, sync, now, monthlySync) {
             sections.push({ title: "Monthly Limit (Pace)", capPct: monthlySync.pctRemainingMonthly, timePct: mo.timePct, resetLabel: `<span class="font-mono">${escapeHtmlSafe(mo.timerText)}</span>` });
         }
     } else if (provider === "gemini") {
-        sections.push({ title: "Usage (Pace)", capPct: sync.limitReached ? 0 : 100, timePct: 0, resetLabel: sync.limitReached ? "limit reached" : "—" });
+        sections.push({ title: "Usage (Pace)", capPct: sync.limitReached ? 0 : 100, timePct: 0, resetLabel: sync.limitReached ? "limit reached" : "-" });
+    } else if (provider === "zai") {
+        const timeLeftMs = sync.reset5hAt ? Math.max(0, sync.reset5hAt - now) : 0;
+        sections.push({
+            title: "5 Hour Limit (Pace)",
+            capPct: sync.pctRemaining5h ?? sync.pctRemaining,
+            timePct: sync.reset5hAt ? Math.min(100, (timeLeftMs / (5 * 60 * 60 * 1000)) * 100) : 0,
+            resetLabel: sync.reset5hAt ? `in <span class="font-mono">${escapeHtmlSafe(formatTimeMs(timeLeftMs))}</span>` : "-"
+        });
     }
     return sections;
 }
@@ -3814,6 +3914,7 @@ function buildSnapshotCard(provider, profile) {
     if (provider === "claude")  pct = sync.pctRemaining;
     else if (provider === "chatgpt") pct = (sync.pctRemaining5h !== undefined && sync.pctRemaining5h !== null) ? sync.pctRemaining5h : (monthlySync ? monthlySync.pctRemainingMonthly : sync.pctRemaining);
     else if (provider === "gemini")  pct = sync.limitReached ? 0 : 100;
+    else if (provider === "zai")     pct = sync.pctRemaining5h ?? sync.pctRemaining;
 
     const pctNum = (pct === undefined || pct === null) ? 100 : Math.max(0, Math.min(100, pct));
     const r = 60, circ = 2 * Math.PI * r;

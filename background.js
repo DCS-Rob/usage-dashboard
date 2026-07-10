@@ -79,6 +79,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .then(() => sendResponse({ status: "success" }))
             .catch(err => sendResponse({ status: "error", error: err.message }));
         return true; // Keep message channel open for async responses
+    } else if (message.type === "FETCH_ZAI_USAGE") {
+        fetchZaiUsage(message.token)
+            .then(data => handleTabSync("zai", data).then(() => data))
+            .then(data => sendResponse({ status: "success", data }))
+            .catch(err => sendResponse({ status: "error", error: err.message }));
+        return true;
     } else if (message.type === "ACCEPT_INVITE") {
         acceptInvite(message, sender)
             .then(() => sendResponse({ status: "success" }))
@@ -318,6 +324,50 @@ function createInviteUserProfile() {
     };
 }
 
+function findZaiFiveHourLimit(payload) {
+    const stack = [payload];
+    while (stack.length) {
+        const item = stack.pop();
+        if (!item || typeof item !== "object") continue;
+        if (Array.isArray(item)) { item.forEach(v => stack.push(v)); continue; }
+        const type = String(item.type || item.limitType || "").toUpperCase();
+        const unit = Number(item.unit);
+        const number = Number(item.number);
+        if (type === "TOKENS_LIMIT" && unit === 3 && number === 5) return item;
+        Object.values(item).forEach(v => { if (v && typeof v === "object") stack.push(v); });
+    }
+    return null;
+}
+
+function fetchZaiUsage(rawToken) {
+    const token = String(rawToken || "").trim().replace(/^"|"$/g, "");
+    if (!token) return Promise.reject(new Error("Z.Ai token not found in localStorage.token"));
+    const authorization = /^Bearer\s+/i.test(token) ? token : "Bearer " + token;
+    return fetch("https://chat.z.ai/api/v1/users/user/plan-usage", {
+        method: "GET",
+        cache: "no-store",
+        headers: { "Accept": "application/json", "Authorization": authorization }
+    }).then(async response => {
+        const text = await response.text();
+        let payload = null;
+        try { payload = text ? JSON.parse(text) : null; } catch (e) {}
+        if (!response.ok) throw new Error("Z.Ai usage API " + response.status + ": " + text.slice(0, 120));
+        const fiveHour = findZaiFiveHourLimit(payload);
+        if (!fiveHour) throw new Error("Z.Ai 5h TOKENS_LIMIT not found in usage response");
+        const usedPercent = Number(fiveHour.usedPercent ?? fiveHour.used_percentage ?? fiveHour.percentUsed ?? fiveHour.usagePercent ?? 0);
+        const pctRemaining5h = Math.max(0, Math.min(100, 100 - usedPercent));
+        const reset5hAt = Number(fiveHour.resetAt || fiveHour.reset_at || 0) || null;
+        return {
+            pctRemaining5h,
+            pctRemaining: pctRemaining5h,
+            usedPercent5h: usedPercent,
+            reset5hAt: reset5hAt || undefined,
+            reset5h: reset5hAt ? new Date(reset5hAt).toISOString() : undefined,
+            summary: "Z.Ai 5h token limit: " + pctRemaining5h + "% remaining" + (reset5hAt ? ", resets " + new Date(reset5hAt).toLocaleString() : "") + "."
+        };
+    });
+}
+
 // Handle data scraped from settings/analytics tabs
 function handleTabSync(provider, data) {
     // Registreer succesvolle sync zodat de scrape-fout-timer weet dat er data ontvangen is.
@@ -399,6 +449,14 @@ function handleAutoLog(provider, logData) {
             }
 
             user.logs.push(logData);
+            if (provider === "zai" || provider === "gemini") {
+                if (!user.syncStatus) user.syncStatus = {};
+                user.syncStatus[provider] = {
+                    ...(user.syncStatus[provider] || {}),
+                    lastSynced: Date.now(),
+                    summary: "Prompt activity tracked"
+                };
+            }
             chrome.storage.local.set({ lt_users: users }, () => {
                 broadcastStateUpdate();
                 // Automatically push data to the cloud in real-time
@@ -735,17 +793,20 @@ function checkForRemoteRefreshRequestBG() {
             logSync("[Cloud Remote BG] Telefoon vroeg om refresh — scrapers worden op achtergrond gestart.");
             triggerScrapeFromBackground("claude", config, profileId, profileLabel);
             setTimeout(() => triggerScrapeFromBackground("chatgpt", config, profileId, profileLabel), 1500);
+            setTimeout(() => triggerScrapeFromBackground("zai", config, profileId, profileLabel), 3000);
         })
         .catch(() => { /* stil */ });
     });
 }
 
 function triggerScrapeFromBackground(provider, config, profileId, profileLabel) {
-    const queryPattern = provider === "claude" ? "*://*.claude.ai/*" : "*://*.chatgpt.com/*";
-    const fallbackUrl = provider === "claude"
-        ? "https://claude.ai/settings/usage"
-        : "https://chatgpt.com/codex/cloud/settings/analytics#personal-usage";
-    const matchPart = provider === "claude" ? "settings/usage" : "analytics";
+    const providerTargets = {
+        claude: { queryPattern: "*://*.claude.ai/*", fallbackUrl: "https://claude.ai/settings/usage", matchPart: "settings/usage", name: "Claude.ai" },
+        chatgpt: { queryPattern: "*://*.chatgpt.com/*", fallbackUrl: "https://chatgpt.com/codex/cloud/settings/analytics#personal-usage", matchPart: "analytics", name: "ChatGPT" },
+        zai: { queryPattern: "*://z.ai/*", fallbackUrl: "https://z.ai/manage-apikey/coding-plan/personal/usage", matchPart: "coding-plan/personal/usage", name: "Z.Ai" }
+    };
+    const target = providerTargets[provider] || providerTargets.chatgpt;
+    const { queryPattern, fallbackUrl, matchPart } = target;
     const scrapeStartKey = `lt_scrape_started_${provider}`;
     const scrapeDoneKey  = `lt_sync_done_${provider}`;
 
@@ -761,11 +822,15 @@ function triggerScrapeFromBackground(provider, config, profileId, profileLabel) 
 
             chrome.tabs.create({ url: fallbackUrl, active: false }, (newTab) => {
                 if (!newTab) return;
+                // Achtergrondtabs worden door Chrome getroteld (throttled timers/rendering),
+                // en claude.ai is sinds de UI-redesign een zware SPA die pas na de eerste render
+                // de echte usage-cijfers ophaalt. 8.5s was te kort en ving vaak een stale/tussentijds
+                // getal — daarom nu ruim de tijd geven voordat de tab gesloten wordt.
                 setTimeout(() => {
                     try { chrome.tabs.remove(newTab.id); } catch (e) { /* ignore */ }
-                }, 8500);
+                }, 16000);
 
-                // Schrijf een fout naar de bin als er na 15s geen sync-bericht ontvangen is.
+                // Schrijf een fout naar de bin als er na 20s geen sync-bericht ontvangen is.
                 setTimeout(() => {
                     chrome.storage.local.get([scrapeStartKey, scrapeDoneKey], (r) => {
                         const started = r[scrapeStartKey] || 0;
@@ -773,12 +838,12 @@ function triggerScrapeFromBackground(provider, config, profileId, profileLabel) 
                         // Alleen fout schrijven als dit nog steeds de recentste scrape-poging is
                         // en er géén sync ontvangen is ná het starten.
                         if (started === startTs && done < startTs && config && profileId) {
-                            const provName = provider === "claude" ? "Claude.ai" : "ChatGPT";
+                            const provName = target.name;
                             writeLastError(config, profileId, profileLabel || "Profile", provider,
                                 `No data received — check if logged in to ${provName} on this Chrome profile`);
                         }
                     });
-                }, 15000);
+                }, 20000);
             });
         }
     });

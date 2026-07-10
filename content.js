@@ -2,11 +2,11 @@
    USAGE DASHBOARD - INJECTED CONTENT SCRIPT (Tab Sniffer & Scraper)
    ========================================================================== */
 
-// Bijgehouden interval-IDs zodat we ze kunnen stoppen als de extensie-context
-// ongeldig wordt (na reload van de extensie terwijl de tab al open was).
+// Track interval IDs so they can be stopped if the extension context
+// becomes invalid (after reloading the extension while the tab is still open).
 const _intervals = [];
 
-// Geeft true terug zolang de extensie-context nog geldig is.
+// Returns true as long as the extension context is still valid.
 function isContextValid() {
     try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
     catch (e) { return false; }
@@ -66,6 +66,8 @@ function setupChatListeners() {
             bindClaude();
         } else if (host.includes("gemini.google.com")) {
             bindGemini();
+        } else if (host === "chat.z.ai" || host.endsWith(".z.ai")) {
+            bindZai();
         }
     }, 2000);
 }
@@ -192,6 +194,66 @@ function bindGemini() {
     }, true);
 }
 
+
+// Bind to Z.Ai chat prompt area using generic chat controls.
+let zaiBound = false;
+let lastZaiText = "";
+let lastZaiLogTime = 0;
+
+function bindZai() {
+    if (zaiBound) return;
+    zaiBound = true;
+    console.log("USAGE DASHBOARD bound to Z.Ai via event delegation.");
+
+    const INPUT_SELECTORS = [
+        "textarea",
+        '[contenteditable="true"][role="textbox"]',
+        '[contenteditable="true"]',
+        'div[role="textbox"]'
+    ];
+
+    function captureZaiText() {
+        for (const sel of INPUT_SELECTORS) {
+            const el = document.querySelector(sel);
+            if (el) {
+                const t = (el.value || el.innerText || el.textContent || "").trim();
+                if (t) return t;
+            }
+        }
+        return "";
+    }
+
+    trackedInterval(() => {
+        const t = captureZaiText();
+        if (t) lastZaiText = t;
+    }, 200);
+
+    function tryLogZai(source) {
+        const text = lastZaiText || captureZaiText();
+        if (!text) return;
+        const now = Date.now();
+        if (now - lastZaiLogTime < 2000) return;
+        lastZaiLogTime = now;
+        lastZaiText = "";
+        console.log(`[USAGE DASHBOARD] Z.Ai send detected via ${source}`);
+        handleMessageSent("zai", text);
+    }
+
+    document.body.addEventListener("keydown", (e) => {
+        const target = e.target;
+        const isPrompt = target && (target.isContentEditable || target.tagName === "TEXTAREA");
+        if (e.key === "Enter" && !e.shiftKey && isPrompt) tryLogZai("keydown-Enter");
+    }, true);
+
+    document.body.addEventListener("mousedown", (e) => {
+        const btn = e.target.closest(
+            "button[type=submit], button[aria-label*=send i], button[aria-label*=submit i], " +
+            "button[class*=send i], [data-testid*=send i], [data-test-id*=send i]"
+        );
+        if (btn) tryLogZai("mousedown-send");
+    }, true);
+}
+
 // Calculate token weights and package log
 function handleMessageSent(provider, textContent) {
     if (!textContent || textContent.trim().length === 0) return;
@@ -301,7 +363,7 @@ function setupGeminiLimitDetector() {
 function autoSelectPersonalTab() {
     if (personalTabClicked) return;
     
-    logSync("[Scraper] Tab 'Persoonlijk gebruik' zoeken...");
+    logSync("[Scraper] Searching for the 'Personal use' tab...");
     // Find candidate clickable elements containing 'persoonlijk' or 'personal'
     const candidates = Array.from(document.querySelectorAll('button, a, [role="tab"], li, span, div'))
         .filter(el => {
@@ -326,7 +388,7 @@ function autoSelectPersonalTab() {
         logSync("[Scraper] Tab geklikt!");
         personalTabClicked = true;
     } else {
-        logSync("[Scraper] Geen tab 'Persoonlijk gebruik' gevonden in DOM.");
+        logSync("[Scraper] No 'Personal use' tab found in the DOM.");
     }
 }
 
@@ -336,20 +398,59 @@ function triggerScrape() {
     
     if (url.includes("claude.ai") && url.includes("settings/usage")) {
         logSync("[Scraper] Claude usage page gedetecteerd. Start scan...");
-        observeAndScrape(scrapeClaudeUsage, true);
+        // Claude's SPA rendert soms eerst een cached/tussentijds percentage voordat de
+        // echte usage-API-data binnenkomt. Niet meteen bij de eerste treffer stoppen —
+        // wachten tot de pagina een moment stabiel is, dan pas versturen.
+        observeAndScrapeStable(scrapeClaudeUsage, { settleMs: 900, maxMs: 9000 });
     } else if (url.includes("chatgpt.com") && url.includes("analytics")) {
         logSync("[Scraper] ChatGPT analytics page gedetecteerd. Start scan...");
         observeAndScrape(scrapeChatGPTUsage, false); // Do not disconnect so it scrapes after tab clicks!
         // Codex maandelijkse gebruikslimiet staat op dezelfde analytics-pagina (apart blok).
         observeAndScrape(scrapeCodexMonthly, false);
+    } else if (url.includes("z.ai/manage-apikey/coding-plan/personal/usage")) {
+        logSync("[Scraper] Z.Ai coding-plan usage page gedetecteerd. Start API sync...");
+        scrapeZaiUsage();
     }
+}
+
+// Blijft de pagina volgen tot de DOM een moment stil is (settleMs) of een max. duur
+// bereikt (maxMs), en verstuurt dan pas het laatst gemeten resultaat. Voorkomt dat een
+// tussentijds/verouderd cijfer (bv. vóór een async API-fetch is teruggekomen) als
+// definitieve waarde wordt vastgelegd.
+function observeAndScrapeStable(scrapeFn, opts) {
+    const settleMs = (opts && opts.settleMs) || 800;
+    const maxMs = (opts && opts.maxMs) || 8000;
+    const startTs = Date.now();
+    let settleTimer = null;
+    let finished = false;
+
+    function finish() {
+        if (finished) return;
+        finished = true;
+        if (settleTimer) clearTimeout(settleTimer);
+        observer.disconnect();
+        scrapeFn(true); // finale scan: verstuurt het laatst bekende resultaat
+    }
+
+    function attempt() {
+        if (finished) return;
+        scrapeFn(false); // compute-only: buffert het resultaat, verstuurt nog niet
+        if (settleTimer) clearTimeout(settleTimer);
+        settleTimer = setTimeout(finish, settleMs);
+        if (Date.now() - startTs > maxMs) finish();
+    }
+
+    attempt();
+    const observer = new MutationObserver(attempt);
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(finish, maxMs);
 }
 
 // Watch for DOM changes to scrape data dynamically once loaded
 function observeAndScrape(scrapeFn, disconnectOnFound = true) {
     // Run immediately
     scrapeFn();
-    
+
     // Observe body mutations for async loading contents
     const observer = new MutationObserver((mutations, obs) => {
         const found = scrapeFn();
@@ -361,8 +462,40 @@ function observeAndScrape(scrapeFn, disconnectOnFound = true) {
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
+
+function getZaiDashboardToken() {
+    const keys = ["token", "access_token", "accessToken", "ZAI_CHAT_TOKEN"];
+    for (const key of keys) {
+        const value = localStorage.getItem(key);
+        if (value) return value;
+    }
+    return "";
+}
+
+function scrapeZaiUsage() {
+    const token = getZaiDashboardToken();
+    if (!token) {
+        logSync("[Z.Ai] Geen dashboard token gevonden in localStorage.token.");
+        return false;
+    }
+    chrome.runtime.sendMessage({ type: "FETCH_ZAI_USAGE", token })
+        .then(res => {
+            if (res && res.status === "success") {
+                logSync("[Z.Ai] Usage API gesynchroniseerd: " + (res.data && res.data.summary ? res.data.summary : "ok"));
+            } else {
+                logSync("[Z.Ai] Usage API fout: " + ((res && res.error) || "unknown error"));
+            }
+        })
+        .catch(err => logSync("[Z.Ai] Usage API bericht mislukt: " + (err.message || err)));
+    return true;
+}
+
 // Scrape Claude's usage limits
-function scrapeClaudeUsage() {
+// Bewaart het laatst berekende Claude-resultaat tijdens de stabilisatiefase
+// (zie observeAndScrapeStable) zodat alleen de finale, stabiele meting verstuurd wordt.
+let _claudeStablePayload = null;
+
+function scrapeClaudeUsage(sendImmediately = true) {
     const pageText = document.body.innerText;
     logSync("[Scraper] Scrapen van Claude usage gestart...");
     
@@ -477,7 +610,7 @@ function scrapeClaudeUsage() {
 
         logSync(`[Scraper] Claude data uitgelezen: Sessie=${pctCurrentSession}%, Week=${pctWeekly}%, ResetAbsoluteTs=${resetSessionAbsoluteTs}, Account="${account}"`);
 
-        safeSendMessage({
+        const payload = {
             type: "SYNC_FROM_TAB",
             provider: "claude",
             data: {
@@ -490,10 +623,12 @@ function scrapeClaudeUsage() {
                 account: account || undefined,
                 summary: `Gesynchroniseerd: Sessie=${pctCurrentSession}% over, Week=${pctWeekly}% over.`
             }
-        });
+        };
+        _claudeStablePayload = payload;
+        if (sendImmediately) safeSendMessage(payload);
         return true;
     }
-    
+
     // Progress bar fallback
     const progressBars = document.querySelectorAll('progress, [role="progressbar"]');
     if (progressBars.length > 0) {
@@ -502,8 +637,8 @@ function scrapeClaudeUsage() {
         const max = parseFloat(bar.getAttribute("max")) || 100;
         const pctUsed = Math.round((val / max) * 100);
         logSync(`[Scraper] Progressbar fallback gevonden: pctUsed=${pctUsed}%`);
-        
-        safeSendMessage({
+
+        const fallbackPayload = {
             type: "SYNC_FROM_TAB",
             provider: "claude",
             data: {
@@ -512,7 +647,16 @@ function scrapeClaudeUsage() {
                 tokensUsed: Math.round((pctUsed / 100) * 200000),
                 summary: `Scraped van progressbar: ${100 - pctUsed}% over.`
             }
-        });
+        };
+        _claudeStablePayload = fallbackPayload;
+        if (sendImmediately) safeSendMessage(fallbackPayload);
+        return true;
+    }
+
+    // sendImmediately===true betekent hier: de finale scan (na settle) leverde geen
+    // nieuwe treffer op — val terug op de laatst gebufferde (mogelijk oudere) meting.
+    if (sendImmediately && _claudeStablePayload) {
+        safeSendMessage(_claudeStablePayload);
         return true;
     }
 
@@ -710,7 +854,7 @@ function scrapeChatGPTUsage() {
 function scrapeCodexMonthly() {
     const divs = Array.from(document.querySelectorAll('div'));
 
-    // Zoek het kleinste kaartje dat over een MAANDELIJKSE/MONTHLY limiet gaat én een % bevat.
+    // Find the smallest card that shows a MONTHLY limit and also contains a percentage.
     const monthlyCards = divs.filter(el => {
         const txt = el.innerText ? el.innerText.trim() : "";
         const lower = txt.toLowerCase();
@@ -753,7 +897,7 @@ function scrapeCodexMonthly() {
 }
 
 // Probeert het ingelogde account (e-mail of naam) te detecteren op claude.ai.
-// Geeft null terug als niets gevonden — nooit een fout gooien.
+// Returns null if nothing is found - never throw an error.
 function detectClaudeAccount() {
     try {
         // Meest specifieke selectors eerst; valt terug op e-mail-patroon in nav-tekst

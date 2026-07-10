@@ -16,6 +16,8 @@
     --color-chatgpt-rgb: 16, 185, 129;
     --color-gemini: hsl(245, 90%, 65%);
     --color-gemini-rgb: 99, 102, 241;
+    --color-zai: hsl(190, 84%, 56%);
+    --color-zai-rgb: 34, 211, 238;
     --color-codex: hsl(258, 90%, 76%);
     --color-codex-rgb: 167, 139, 250;
     
@@ -788,6 +790,7 @@ body.auth-view .app-container {
 .claude-card::before { background: var(--color-claude); }
 .chatgpt-card::before { background: var(--color-chatgpt); }
 .gemini-card::before { background: var(--color-gemini); }
+.zai-card::before { background: var(--color-zai); }
 
 .provider-header {
     display: flex;
@@ -828,6 +831,12 @@ body.auth-view .app-container {
     background: rgba(var(--color-gemini-rgb), 0.12);
     color: var(--color-gemini);
     border: 1px solid rgba(var(--color-gemini-rgb), 0.2);
+}
+
+.brand-icon-wrapper.zai {
+    background: rgba(var(--color-zai-rgb), 0.12);
+    color: var(--color-zai);
+    border: 1px solid rgba(var(--color-zai-rgb), 0.2);
 }
 
 .brand-icon-wrapper.codex {
@@ -883,6 +892,11 @@ body.auth-view .app-container {
 .gemini-stroke {
     stroke: var(--color-gemini);
     filter: drop-shadow(0 0 6px rgba(var(--color-gemini-rgb), 0.4));
+}
+
+.zai-stroke {
+    stroke: var(--color-zai);
+    filter: drop-shadow(0 0 6px rgba(var(--color-zai-rgb), 0.4));
 }
 
 .codex-stroke {
@@ -1206,6 +1220,7 @@ body.auth-view .app-container {
 .indicator-claude { background: var(--color-claude); box-shadow: 0 0 6px var(--color-claude); }
 .indicator-chatgpt { background: var(--color-chatgpt); box-shadow: 0 0 6px var(--color-chatgpt); }
 .indicator-gemini { background: var(--color-gemini); box-shadow: 0 0 6px var(--color-gemini); }
+.indicator-zai { background: var(--color-zai); box-shadow: 0 0 6px var(--color-zai); }
 
 .log-item-meta {
     display: flex;
@@ -1840,6 +1855,7 @@ body.auth-view .app-container {
 .badge-claude { background: rgba(var(--color-claude-rgb), 0.15); color: var(--color-claude); border: 1px solid rgba(var(--color-claude-rgb), 0.2); }
 .badge-chatgpt { background: rgba(var(--color-chatgpt-rgb), 0.15); color: var(--color-chatgpt); border: 1px solid rgba(var(--color-chatgpt-rgb), 0.2); }
 .badge-gemini { background: rgba(var(--color-gemini-rgb), 0.15); color: var(--color-gemini); border: 1px solid rgba(var(--color-gemini-rgb), 0.2); }
+.badge-zai { background: rgba(var(--color-zai-rgb), 0.15); color: var(--color-zai); border: 1px solid rgba(var(--color-zai-rgb), 0.2); }
 .badge-codex { background: rgba(var(--color-codex-rgb), 0.15); color: var(--color-codex); border: 1px solid rgba(var(--color-codex-rgb), 0.2); }
 
 /* Utilities */
@@ -2066,6 +2082,13 @@ body.auth-view .app-container {
 .gemini-bg-trans {
     background-color: rgba(var(--color-gemini-rgb), 0.15) !important;
 }
+.zai-bg {
+    background-color: var(--color-zai) !important;
+    color: var(--color-zai);
+}
+.zai-bg-trans {
+    background-color: rgba(var(--color-zai-rgb), 0.15) !important;
+}
 .codex-bg {
     background-color: var(--color-codex) !important;
     color: var(--color-codex);
@@ -2131,6 +2154,7 @@ body.auth-view .app-container {
 .summary-card.border-claude::before { background: var(--color-claude); }
 .summary-card.border-chatgpt::before { background: var(--color-chatgpt); }
 .summary-card.border-gemini::before { background: var(--color-gemini); }
+.summary-card.border-zai::before { background: var(--color-zai); }
 .summary-card.border-accent::before { background: #3b82f6; } /* standard accent blue */
 
 .summary-label {

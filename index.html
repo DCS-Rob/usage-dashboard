@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.26.0">
+    <link rel="stylesheet" href="style.css?v=0.26.1">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -564,6 +564,78 @@
 
                         </div>
 
+                        <!-- Z.AI CARD -->
+                        <div class="glass-panel provider-card zai-card" id="card-zai">
+                            <div class="provider-header">
+                                <div class="provider-title">
+                                    <div class="brand-icon-wrapper zai">
+                                        <i class="fa-solid fa-brain"></i>
+                                    </div>
+                                    <div>
+                                        <h3>Z.Ai</h3>
+                                        <span class="provider-meta">GLM ? 24h Rolling Limit</span>
+                                    </div>
+                                </div>
+                                <span class="badge badge-zai">Web API</span>
+                            </div>
+
+                            <div class="progress-visualization">
+                                <div class="progress-ring-container">
+                                    <svg class="progress-ring" width="160" height="160">
+                                        <circle class="progress-ring__circle-bg" stroke="rgba(255,255,255,0.04)" stroke-width="12" fill="transparent" r="68" cx="80" cy="80"/>
+                                        <circle class="progress-ring__circle zai-stroke" id="ring-zai" stroke-width="12" fill="transparent" r="68" cx="80" cy="80"/>
+                                    </svg>
+                                    <div class="progress-value">
+                                        <span class="pct" id="pct-zai">100%</span>
+                                        <span class="lbl">Left</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card-stats">
+                                <div class="sync-status-indicator mb-2">
+                                    <i class="fa-solid fa-circle-question info-tooltip" title="Z.Ai usage is read from the dashboard endpoint when you open the coding-plan usage page. Prompt tracking is used as a fallback."></i>
+                                    <span>Manual tracking</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span>Messages Left:</span>
+                                    <span class="stat-val font-mono" id="msg-limit-zai">100 / 100</span>
+                                </div>
+                                <div class="stat-row">
+                                    <span>Used in 24 hours:</span>
+                                    <span class="stat-val font-mono" id="msg-used-zai">0</span>
+                                </div>
+                                <div class="stat-row highlight mb-3">
+                                    <span>Full reset in:</span>
+                                    <span class="stat-val font-mono reset-timer" id="timer-zai">No limit</span>
+                                </div>
+
+                                <div class="parallel-pace-section">
+                                    <div class="parallel-bar-row">
+                                        <div class="parallel-bar-label">
+                                            <span>Remaining Capacity:</span>
+                                            <span class="font-mono pct-val" id="pace-cap-pct-zai">100%</span>
+                                        </div>
+                                        <div class="parallel-bar-track">
+                                            <div class="parallel-bar-fill zai-bg" id="pace-cap-bar-zai" style="width: 100%;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="parallel-bar-row mt-2">
+                                        <div class="parallel-bar-label">
+                                            <span>Time until Reset (24h):</span>
+                                            <span class="font-mono pct-val" id="pace-time-pct-zai">100%</span>
+                                        </div>
+                                        <div class="parallel-bar-track time-track">
+                                            <div class="parallel-bar-fill time-bg" id="pace-time-bar-zai" style="width: 100%;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="parallel-status mt-2" id="pace-status-box-zai">
+                                        <i class="fa-solid fa-gauge-high"></i> <span id="pace-status-text-zai">On Track</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
 
                     <!-- MULTI-PROFILE GRID (combined "All profiles" view: one card per profile × subscription) -->
@@ -580,7 +652,7 @@
                             <div class="log-feed-container">
                                 <div id="log-feed-empty" class="feed-empty-state">
                                     <i class="fa-solid fa-list-check"></i>
-                                    <p>No activity logged yet. Start chatting in Claude or ChatGPT and the extension will record it live!</p>
+                                    <p>No activity logged yet. Start chatting in Claude, ChatGPT, Gemini or Z.Ai and the extension will record it live!</p>
                                 </div>
                                 <ul id="log-feed-list" class="log-feed-list">
                                     <!-- Dynamic log items -->
@@ -608,6 +680,11 @@
                             <span class="summary-label">Total Gemini (7d)</span>
                             <span class="summary-value" id="stats-total-gemini">0 m</span>
                             <span class="summary-subtext" id="stats-avg-gemini">Avg. 0 / day</span>
+                        </div>
+                        <div class="glass-panel summary-card border-zai">
+                            <span class="summary-label">Total Z.Ai (7d)</span>
+                            <span class="summary-value" id="stats-total-zai">0 m</span>
+                            <span class="summary-subtext" id="stats-avg-zai">Avg. 0 / day</span>
                         </div>
                         <div class="glass-panel summary-card border-accent">
                             <span class="summary-label">Busiest Day (7d)</span>
@@ -672,6 +749,7 @@
                                 <label class="block-toggle"><input type="checkbox" id="vb-claude" data-block="claude" checked> <span class="block-toggle-dot" style="background:var(--color-claude);"></span> Claude Pro</label>
                                 <label class="block-toggle"><input type="checkbox" id="vb-chatgpt" data-block="chatgpt" checked> <span class="block-toggle-dot" style="background:var(--color-chatgpt);"></span> ChatGPT (incl. monthly)</label>
                                 <label class="block-toggle"><input type="checkbox" id="vb-gemini" data-block="gemini" checked> <span class="block-toggle-dot" style="background:var(--color-gemini);"></span> Gemini Advanced</label>
+                                <label class="block-toggle"><input type="checkbox" id="vb-zai" data-block="zai" checked> <span class="block-toggle-dot" style="background:var(--color-zai);"></span> Z.Ai</label>
                             </div>
                         </div>
 
@@ -717,6 +795,18 @@
                                     </div>
                                 </div>
 
+                                <div class="settings-section-title mt-3">Z.Ai (Manual Buffer)</div>
+                                <div class="form-grid">
+                                    <div class="form-group">
+                                        <label for="limit-zai-msg">Max Messages</label>
+                                        <input type="number" id="limit-zai-msg" value="100" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="limit-zai-hours">Window Duration (hours)</label>
+                                        <input type="number" id="limit-zai-hours" value="24" min="1" max="168">
+                                    </div>
+                                </div>
+
                                 <button type="submit" class="btn-primary mt-3">Save Limits</button>
                             </form>
                         </div>
@@ -741,6 +831,14 @@
                                         <span id="settings-status-chatgpt" class="badge">Inactive</span>
                                     </div>
                                     <p class="desc">Open <a href="https://chatgpt.com/codex/cloud/settings/analytics#personal-usage" target="_blank">chatgpt.com settings/analytics</a> to scan your usage chart.</p>
+                                </div>
+
+                                <div class="status-item-box mt-3">
+                                    <div class="label-row">
+                                        <strong>Z.Ai Usage API:</strong>
+                                        <span id="settings-status-zai" class="badge">Inactive</span>
+                                    </div>
+                                    <p class="desc">Open <a href="https://z.ai/manage-apikey/coding-plan/personal/usage" target="_blank">z.ai coding-plan usage</a> to scan the 5h token limit and reset time.</p>
                                 </div>
 
                                 <div class="status-item-box mt-3">
@@ -1034,6 +1132,7 @@
                             <option value="chatgpt" selected>ChatGPT</option>
                             <option value="claude">Claude</option>
                             <option value="gemini">Gemini</option>
+                            <option value="zai">Z.Ai</option>
                         </select>
                     </label>
                 </div>
@@ -1044,6 +1143,6 @@
     </div>
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.26.0"></script>
+    <script src="app.js?v=0.26.1"></script>
 </body>
 </html>
