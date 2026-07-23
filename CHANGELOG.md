@@ -4,6 +4,32 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.26.2] — 2026-07-23
+
+### Fix — Weekly Limit las promotietekst i.p.v. het echte percentage
+
+Claude.ai toont soms een promobanner tussen de "Weekly limits"-kop en de echte meter
+(bv. "Your limits are temporarily boosted... Claude Code limit is 50% higher..."). De
+scraper herkende een omvattende `<div>` die zowel "weekly limits" als die bannertekst
+bevatte, greep daaruit het EERSTE percentage ("50%" uit "50% higher") en overschreef
+daarmee het echte, correcte percentage — bevestigd live: dashboard toonde 50% terwijl
+Claude.ai zelf "3% used" liet zien.
+
+**Fix (twee lagen, structureel i.p.v. eenmalige patch zodat toekomstige promo-copy niet
+opnieuw breekt):**
+1. Kaarten met "boosted"/"tijdelijk"/"higher"/"hoger" worden nu uitgesloten van de
+   weekly- en current-session-kandidatenlijst.
+2. Nieuwe `extractUsagePercentMatch()` geeft voorrang aan een percentage dat direct
+   naast "used"/"remaining"/"verbruikt"/"resterend"/"over"/"left" staat, i.p.v. het
+   eerste kale percentage in de tekst.
+
+### Bestanden
+- `content.js` — `extractUsagePercentMatch()` toegevoegd; toegepast in
+  `scrapeClaudeUsage()` voor zowel current-session- als weekly-parsing; promo-tekst
+  uitgesloten uit beide kandidatenfilters.
+
+---
+
 ## [0.26.1] — 2026-07-10
 
 ### Fix — verouderde/onjuiste Claude-percentages bij remote refresh

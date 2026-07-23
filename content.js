@@ -495,6 +495,15 @@ function scrapeZaiUsage() {
 // (zie observeAndScrapeStable) zodat alleen de finale, stabiele meting verstuurd wordt.
 let _claudeStablePayload = null;
 
+// Claude toont soms promotietekst tussen de kop en de echte meter (bv. "temporarily
+// boosted... 50% higher"). Zo'n percentage staat NOOIT direct naast "used"/"remaining" —
+// geef die combinatie voorrang boven een kaal percentage, zodat promotaal nooit de echte
+// meterwaarde overschrijft.
+function extractUsagePercentMatch(text) {
+    return text.match(/(\d+)\s*%\s*(?:used|verbruikt|remaining|resterend|over|left)/i)
+        || text.match(/(\d+)%/);
+}
+
 function scrapeClaudeUsage(sendImmediately = true) {
     const pageText = document.body.innerText;
     logSync("[Scraper] Scrapen van Claude usage gestart...");
@@ -512,15 +521,15 @@ function scrapeClaudeUsage(sendImmediately = true) {
         const lower = txt.toLowerCase();
         return txt.length > 0 && txt.length < 250 && (
             lower.includes("current session") || lower.includes("lopende sessie")
-        );
+        ) && !lower.includes("boosted") && !lower.includes("tijdelijk");
     }).sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
-    
+
     logSync("[Scraper] Aantal Claude lopende-sessie kaarten: " + currentSessionCards.length);
-    
+
     currentSessionCards.forEach((card, idx) => {
         const text = card.innerText;
         const lower = text.toLowerCase();
-        const pctMatch = text.match(/(\d+)%/);
+        const pctMatch = extractUsagePercentMatch(text);
         const resetMatch = text.match(/(?:resets?|herstelt)\s*in\s*([^\n\r]+)/i);
         
         if (pctMatch) {
@@ -541,7 +550,10 @@ function scrapeClaudeUsage(sendImmediately = true) {
         const lower = txt.toLowerCase();
         return txt.length > 0 && txt.length < 350 && (
             lower.includes("all models") || lower.includes("alle modellen") || lower.includes("weekly limits")
-        ) && (lower.includes("weekly") || lower.includes("wekelijks") || lower.includes("reset") || lower.includes("used") || lower.includes("verbruikt"));
+        ) && (lower.includes("weekly") || lower.includes("wekelijks") || lower.includes("reset") || lower.includes("used") || lower.includes("verbruikt"))
+        // Sluit Claude's promo-banners uit (bv. "temporarily boosted... 50% higher"),
+        // die anders per ongeluk als het echte wekelijkse percentage gelezen worden.
+        && !lower.includes("boosted") && !lower.includes("tijdelijk") && !lower.includes("higher") && !lower.includes("hoger");
     }).sort((a, b) => (a.innerText || "").length - (b.innerText || "").length);
 
     logSync("[Scraper] Aantal Claude wekelijkse-limiet kaarten: " + weeklyCards.length);
@@ -549,7 +561,7 @@ function scrapeClaudeUsage(sendImmediately = true) {
     weeklyCards.forEach((card, idx) => {
         const text = card.innerText;
         const lower = text.toLowerCase();
-        const pctMatch = text.match(/(\d+)%/);
+        const pctMatch = extractUsagePercentMatch(text);
         const resetMatch = text.match(/resets\s*([\d\w\s.:,\/-]+)/i) || 
                            text.match(/reset\s*([\d\w\s.:,\/-]+)/i) ||
                            text.match(/herstelt\s*([\d\w\s.:,\/-]+)/i) ||
