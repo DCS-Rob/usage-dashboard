@@ -4,6 +4,51 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.26.3] — 2026-07-27
+
+### Fix — "ik moet 2x verversen" + telefoon bleef oude data/versie tonen
+
+Twee losse oorzaken gevonden en beide bewezen met een test.
+
+**1. Service worker serveerde bij een update éérst de oude `index.html` (`sw.js`).**
+De fetch-handler was cache-first (stale-while-revalidate) voor *alle* GET-requests,
+inclusief het navigatie-request. Alle assets hebben een `?v=<versie>`-query — behalve
+`index.html` zelf. Gevolg, deterministisch bij élke update:
+1e load → oude `index.html` uit cache → die vraagt de oude `app.js?v=<oud>` op → oude
+code draait; pas bij de 2e load zag je de nieuwe versie. Op een telefoon (die je zelden
+echt afsluit) bleef de PWA daardoor lang op oude code hangen.
+
+*Fix:* het app-shell-document (navigatie / `./` / `index.html`) gaat nu **network-first**
+met `cache: 'no-cache'` (revalideren via ETag → goedkope 304), en de cache blijft
+uitsluitend offline-fallback. Overige assets blijven cache-first — veilig, want hun URL
+verandert per versie.
+
+*Getest:* lokale server, echte navigatie onder een actieve service worker. `index.html`
+gewijzigd → nieuwe inhoud verscheen bij de **eerste** reload (voorheen pas bij de tweede).
+
+**2. Mobiel: de live-stream stierf bij screen-lock en werd nooit herstart (`app.js`).**
+Zet de telefoon het scherm op slot of gaat de PWA naar de achtergrond, dan breekt het OS
+de SSE-verbindingen af. `EventSource` herverbindt in theorie zelf, maar na een OS-suspend
+is de socket vaak definitief dood — en `onerror` werd geslikt, dus niets merkte het.
+Bovendien deed de `visibilitychange`-handler bij een PWA **niets** als er minder dan
+2 minuten verstreken waren. Die rem stamde uit de tijd dat één lees-actie de volledige
+255 KB-blob ophaalde; sinds v0.26.0 is dat enkele KB, dus de rem leverde alleen nog oude
+data op.
+
+*Fix:* nieuwe `restartPwaCloudStream()` bouwt bij terug-in-beeld de stream opnieuw op én
+leest verse data in, met een anti-burst-drempel van 5s. De 2-minuten-rem is voor de PWA
+weg (blijft staan voor de extensie, waar een refresh een tabblad-reload kost). Ook
+toegevoegd: herstel bij het `online`-event (wifi-wissel / vliegtuigstand).
+
+*Getest:* herstel-keten in de live pagina met gestubde afhankelijkheden — oude stream
+gesloten, nieuwe opgebouwd, verse data ingelezen; anti-burst onderdrukt dubbele rebuilds.
+
+### Bestanden
+- `sw.js` — `isAppShellRequest()` + network-first-tak met offline-fallback.
+- `app.js` — `restartPwaCloudStream()`; `visibilitychange` herzien; `online`-listener.
+
+---
+
 ## [0.26.2] — 2026-07-23
 
 ### Fix — Weekly Limit las promotietekst i.p.v. het echte percentage

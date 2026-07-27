@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.26.2";
+const APP_VERSION = "0.26.3";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2639,19 +2639,30 @@ function setupEventListeners() {
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
             const now = Date.now();
+            // PWA/sync-client: ALTIJD herstellen bij terug-in-beeld, zonder de 2-minuten-rem.
+            // Die rem stamt uit de tijd dat één lees-actie de volledige 255 KB-blob ophaalde;
+            // sinds v0.26.0 is een lees-actie enkele KB (meta+status), dus de rem leverde
+            // alleen nog maar oude data op de telefoon op. De stream moet hier óók opnieuw
+            // opgebouwd worden — zie restartPwaCloudStream().
+            if (isSyncClient()) {
+                lastAutoSync = now;
+                restartPwaCloudStream("app weer in beeld");
+                return;
+            }
+            // Extensie-modus: scrapen kost een tabblad-reload, dus hier blijft de rem staan.
             if (now - lastAutoSync > 120000) {
                 lastAutoSync = now;
-                if (isSyncClient()) {
-                    console.log("Auto-refreshing cloud data upon mobile PWA focus...");
-                    loadCloudUserData(false);
-                } else {
-                    console.log("Auto-refreshing usage limits upon tab focus...");
-                    showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Auto-refresh activated...`);
-                    triggerSyncNow("claude");
-                    setTimeout(() => triggerSyncNow("chatgpt"), 1000);
-                }
+                console.log("Auto-refreshing usage limits upon tab focus...");
+                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Auto-refresh activated...`);
+                triggerSyncNow("claude");
+                setTimeout(() => triggerSyncNow("chatgpt"), 1000);
             }
         }
+    });
+
+    // Netwerk terug (telefoon uit vliegtuigstand / wifi-wissel): stream is dan altijd dood.
+    window.addEventListener("online", () => {
+        if (isSyncClient()) restartPwaCloudStream("netwerk terug");
     });
 
     // M. Mobile Sync Event Listeners
@@ -3239,6 +3250,30 @@ function startFirebaseStreaming(config, onChange) {
     });
     console.log("[SSE Firebase V2] Streaming meta+status:", config.binId);
     return { close: () => sources.forEach(s => { try { s.close(); } catch (e) {} }) };
+}
+
+/* Herstel de PWA-stream + haal verse data op.
+   Nodig omdat een telefoon de SSE-verbindingen hard afbreekt zodra het scherm op slot
+   gaat of de PWA naar de achtergrond verdwijnt. EventSource claimt zelf te herverbinden,
+   maar na een OS-suspend is de socket vaak definitief dood — en omdat onerror geslikt
+   werd, merkte niemand dat. Gevolg: bij heropenen bleef de telefoon oude data tonen tot
+   je de app helemaal afsloot. Daarom: bij elke keer terug-in-beeld de stream opnieuw
+   opbouwen (2 verbindingen, verwaarloosbaar) en meteen opnieuw inlezen. */
+let _lastPwaStreamRestart = 0;
+
+function restartPwaCloudStream(reason) {
+    const cfg = isSyncClient();
+    if (!cfg) return;
+
+    // Korte anti-burst-drempel: meerdere events (visibility + online) mogen samenvallen.
+    const now = Date.now();
+    if (now - _lastPwaStreamRestart < 5000) { loadCloudUserData(false); return; }
+    _lastPwaStreamRestart = now;
+
+    console.log(`[SSE Firebase V2] Stream herstellen (${reason})`);
+    if (_firebaseStreamPWA) { try { _firebaseStreamPWA.close(); } catch (e) {} }
+    _firebaseStreamPWA = startFirebaseStreaming(cfg, () => loadCloudUserData(false));
+    loadCloudUserData(false);
 }
 
 let lastSyncTime = null;

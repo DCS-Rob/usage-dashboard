@@ -1,5 +1,5 @@
-const CACHE_NAME = 'usagedashboard-cache-v0.26.2';
-const APP_BUILD = '0.26.2';
+const CACHE_NAME = 'usagedashboard-cache-v0.26.3';
+const APP_BUILD = '0.26.3';
 
 // Beantwoord versievragen vanuit de page (voor de Build info-strip)
 self.addEventListener('message', (event) => {
@@ -13,8 +13,8 @@ self.addEventListener('message', (event) => {
 const ASSETS = [
   './',
   './index.html',
-  './style.css?v=0.26.2',
-  './app.js?v=0.26.2',
+  './style.css?v=0.26.3',
+  './app.js?v=0.26.3',
   './lib/chart.min.js',
   './assets/usage-dashboard-logo.svg',
   './assets/openai-badge.svg',
@@ -48,10 +48,46 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Fetch Event: Stale-while-revalidate caching strategy
+// Is dit het app-shell-document (index.html of de directory-root)?
+// Dit is het ENIGE bestand met een onversioneerde URL: alle overige assets hebben een
+// ?v=<versie>-query, dus daarvoor is cache-first veilig (nieuwe versie = nieuwe URL).
+function isAppShellRequest(request) {
+  if (request.mode === 'navigate') return true;
+  const path = new URL(request.url).pathname;
+  return path.endsWith('/') || path.endsWith('/index.html');
+}
+
+// Fetch Event
 self.addEventListener('fetch', (e) => {
   // Only intercept HTTP/S GET requests (skip chrome-extension:// schemes and POST requests)
   if (e.request.method !== 'GET' || !e.request.url.startsWith(self.location.origin)) {
+    return;
+  }
+
+  // App shell: NETWORK-FIRST (cache alleen als offline-fallback).
+  // Waarom: index.html verwijst naar app.js?v=<versie>. Bij cache-first kreeg je na een
+  // update eerst de OUDE index.html → die vroeg de OUDE app.js op → pas bij een tweede
+  // refresh zag je de nieuwe versie. Dat was de oorzaak van "ik moet 2x verversen"
+  // en van een telefoon die op een oude versie bleef hangen.
+  if (isAppShellRequest(e.request)) {
+    e.respondWith(
+      // 'no-cache' = wél revalideren bij de server (ETag → goedkope 304), niet blind
+      // uit de HTTP-cache van de browser serveren.
+      fetch(new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' }))
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() =>
+          // Offline: val terug op de cache (exacte request, anders de shell-varianten).
+          caches.match(e.request)
+            .then((hit) => hit || caches.match('./index.html'))
+            .then((hit) => hit || caches.match('./'))
+        )
+    );
     return;
   }
 
