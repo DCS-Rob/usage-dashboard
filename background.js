@@ -810,41 +810,59 @@ function triggerScrapeFromBackground(provider, config, profileId, profileLabel) 
     const scrapeStartKey = `lt_scrape_started_${provider}`;
     const scrapeDoneKey  = `lt_sync_done_${provider}`;
 
+    // Traag pad: onzichtbaar tabblad openen, laten meten door het content script, sluiten.
+    function openScrapeTab() {
+        const startTs = Date.now();
+        chrome.storage.local.set({ [scrapeStartKey]: startTs });
+
+        chrome.tabs.create({ url: fallbackUrl, active: false }, (newTab) => {
+            if (!newTab) return;
+            // Achtergrondtabs worden door Chrome getroteld (throttled timers/rendering),
+            // en claude.ai is sinds de UI-redesign een zware SPA. 8.5s was te kort en ving
+            // vaak een stale/tussentijds getal — daarom nu ruim de tijd.
+            setTimeout(() => {
+                try { chrome.tabs.remove(newTab.id); } catch (e) { /* ignore */ }
+            }, 16000);
+
+            // Schrijf een fout naar de bin als er na 20s geen sync-bericht ontvangen is.
+            setTimeout(() => {
+                chrome.storage.local.get([scrapeStartKey, scrapeDoneKey], (r) => {
+                    const started = r[scrapeStartKey] || 0;
+                    const done    = r[scrapeDoneKey]  || 0;
+                    // Alleen fout schrijven als dit nog steeds de recentste scrape-poging is
+                    // en er géén sync ontvangen is ná het starten.
+                    if (started === startTs && done < startTs && config && profileId) {
+                        const provName = target.name;
+                        writeLastError(config, profileId, profileLabel || "Profile", provider,
+                            `No data received — check if logged in to ${provName} on this Chrome profile`);
+                    }
+                });
+            }, 20000);
+        });
+    }
+
     chrome.tabs.query({ url: queryPattern }, (tabs) => {
+        // Claude: elke open claude.ai-tab kan de JSON-API bevragen (~0,2s), zonder reload
+        // en zonder dat de usage-pagina open hoeft te staan. Zie content.js.
+        if (provider === "claude" && tabs && tabs.length) {
+            let answered = false;
+            tabs.forEach(t => {
+                chrome.tabs.sendMessage(t.id, { type: "REFRESH_NOW", provider: "claude" }, (resp) => {
+                    void chrome.runtime.lastError;   // tabs zonder content script negeren
+                    if (resp && resp.ok) answered = true;
+                });
+            });
+            // Niets gehoord → alsnog het trage pad met een tijdelijk achtergrondtabblad.
+            setTimeout(() => { if (!answered) openScrapeTab(); }, 1500);
+            return;
+        }
+
         const existingTab = (tabs || []).find(t => t.url && t.url.includes(matchPart));
         if (existingTab) {
             // Stille reload — gebruiker blijft op huidige tab
             chrome.tabs.reload(existingTab.id);
         } else {
-            // Open op achtergrond, sluit na 8.5s
-            const startTs = Date.now();
-            chrome.storage.local.set({ [scrapeStartKey]: startTs });
-
-            chrome.tabs.create({ url: fallbackUrl, active: false }, (newTab) => {
-                if (!newTab) return;
-                // Achtergrondtabs worden door Chrome getroteld (throttled timers/rendering),
-                // en claude.ai is sinds de UI-redesign een zware SPA die pas na de eerste render
-                // de echte usage-cijfers ophaalt. 8.5s was te kort en ving vaak een stale/tussentijds
-                // getal — daarom nu ruim de tijd geven voordat de tab gesloten wordt.
-                setTimeout(() => {
-                    try { chrome.tabs.remove(newTab.id); } catch (e) { /* ignore */ }
-                }, 16000);
-
-                // Schrijf een fout naar de bin als er na 20s geen sync-bericht ontvangen is.
-                setTimeout(() => {
-                    chrome.storage.local.get([scrapeStartKey, scrapeDoneKey], (r) => {
-                        const started = r[scrapeStartKey] || 0;
-                        const done    = r[scrapeDoneKey]  || 0;
-                        // Alleen fout schrijven als dit nog steeds de recentste scrape-poging is
-                        // en er géén sync ontvangen is ná het starten.
-                        if (started === startTs && done < startTs && config && profileId) {
-                            const provName = target.name;
-                            writeLastError(config, profileId, profileLabel || "Profile", provider,
-                                `No data received — check if logged in to ${provName} on this Chrome profile`);
-                        }
-                    });
-                }, 20000);
-            });
+            openScrapeTab();
         }
     });
 }

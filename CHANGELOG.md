@@ -4,6 +4,67 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.0] — 2026-08-03
+
+### Claude-cijfers nu via Claude's eigen JSON-API — ~0,7s i.p.v. 8-16s
+
+**Aanleiding:** de refresh-knop hielp vaak niet ("Tab sync: 49m ago" bleef staan) en het
+geheel voelde traag.
+
+**Twee oorzaken, beide weg:**
+
+1. *De refresh-knop op het dashboard sloot het tabblad te vroeg.* In v0.26.1 verhoogde ik
+   de wachttijd in `background.js` (de refresh vanaf de telefoon), maar de knop op het
+   dashboard zelf loopt via een ándere functie — `triggerSyncNow()` in `app.js` — en die
+   stond nog op 8,5s. Te kort voor de zware claude.ai-SPA in een getroteld achtergrondtabblad:
+   het tabblad sloot vóór de meting, dus er werd niets bijgewerkt. Nu 16s, en de logica staat
+   nog maar op één plek (`openBackgroundScrapeTab()`).
+
+2. *De hele "tabblad openen en de pagina uitlezen"-aanpak is vervangen waar het kan.*
+   Claude levert de cijfers zelf via `GET /api/organizations/<uuid>/usage`:
+   `{ five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at } }`.
+   Dat werkt op **elke** claude.ai-pagina (same-origin, sessiecookies), dus de usage-pagina
+   hoeft niet open te staan en er hoeft niets gerenderd te worden.
+
+**Wat dit oplevert:**
+
+| | Oud (pagina uitlezen) | Nieuw (API) |
+|---|---|---|
+| Duur | 8-16 s | **~0,7 s** (gemeten) |
+| Zichtbaar voor de gebruiker | tabblad opent/herlaadt | niets |
+| Gevoelig voor promobanners | ja (las "50% higher" als verbruik) | nee |
+| Gevoelig voor taal/DOM-wijzigingen | ja | nee |
+| Reset-tijd | geparste tekst ("Resets Tue 6:00 AM") | exacte tijdstempel |
+
+Staat er al een claude.ai-tab open, dan wordt die **niet meer herladen**: de extensie vraagt
+het content script via een bericht (`REFRESH_NOW`) om direct te meten. De gebruiker ziet niets
+gebeuren. Alleen als er géén claude.ai-tab open is, wordt nog een tijdelijk achtergrondtabblad
+gebruikt — en ook dat meet dan via de API.
+
+**Vangnet behouden:** mislukt de API, dan valt de extensie terug op de oude methode (de pagina
+uitlezen), inclusief de promobanner-bescherming uit v0.26.2.
+
+**Rem:** claude.ai is een SPA, dus de URL verandert bij elke chatwissel. Automatische metingen
+zijn daarom beperkt tot één per minuut; een expliciete refresh omzeilt die rem altijd.
+
+**Reset-tijden exact:** nieuw veld `resetWeeklyAbsoluteTs` (naast het bestaande
+`resetSessionAbsoluteTs`). `parseClaudeWeeklyTime()` en de weergavecode gebruiken de
+tijdstempel wanneer die er is, i.p.v. dagnamen/AM-PM uit tekst te raden.
+
+*Geverifieerd tegen de live pagina:* weekly 33% over ↔ pagina "67% used" (exact);
+sessie 53% over ↔ pagina "48% used" (verschil = de minuut ertussen); juiste organisatie
+gekozen (abonnement, niet de losse API-org).
+
+### Bestanden
+- `content.js` — `fetchClaudeUsageViaApi()`, `pickClaudeSubscriptionOrg()`, `claudeApi()`,
+  `REFRESH_NOW`-luisteraar, throttle; `triggerScrape()` gebruikt de API als primair pad.
+- `background.js` — `triggerScrapeFromBackground()`: berichten-pad voor Claude,
+  tab-logica uitgetrokken naar `openScrapeTab()`.
+- `app.js` — `triggerSyncNow()`: berichten-pad voor Claude; `openBackgroundScrapeTab()`
+  (16s); `parseClaudeWeeklyTime()` + weergave gebruiken `resetWeeklyAbsoluteTs`.
+
+---
+
 ## [0.26.3] — 2026-07-27
 
 ### Fix — "ik moet 2x verversen" + telefoon bleef oude data/versie tonen

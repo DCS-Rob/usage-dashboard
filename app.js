@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.26.3";
+const APP_VERSION = "0.27.0";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -1541,7 +1541,13 @@ function renderDashboardProgress() {
         const newLogs = state.userLogs.filter(l => l.model === "claude" && l.timestamp > sync.lastSynced);
         claudeWeeklyPct = Math.max(0, sync.pctRemainingWeekly - Math.round(newLogs.length * 0.2));
         
-        if (sync.resetWeekly) {
+        if (sync.resetWeeklyAbsoluteTs) {
+            // Exacte tijdstempel uit Claude's eigen API — geen tekstparsing nodig.
+            const weekMs = 7 * 24 * 60 * 60 * 1000;
+            const diffMs = Math.max(0, sync.resetWeeklyAbsoluteTs - now);
+            claudeWeeklyTimePct = Math.min(100, (diffMs / weekMs) * 100);
+            claudeWeeklyTimerText = diffMs === 0 ? "Resetting…" : formatWeeklyTimeMs(diffMs);
+        } else if (sync.resetWeekly) {
             const resetWeekly = sync.resetWeekly;
             const weekMs = 7 * 24 * 60 * 60 * 1000;
 
@@ -2877,6 +2883,21 @@ function formatTimeAgo(timestamp) {
     return new Date(timestamp).toLocaleDateString("en-GB");
 }
 
+/* Opent een onzichtbaar tabblad dat door het content script gemeten wordt en sluit het
+   daarna. 16s i.p.v. de oude 8,5s: achtergrondtabs worden door Chrome getroteld en de
+   zware claude.ai-SPA haalde 8,5s vaak niet — dan sloot het tabblad vóór de meting en
+   bleef "Tab sync" op een oude tijd staan. */
+function openBackgroundScrapeTab(url) {
+    showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> No active tab found. Opening a temporary background tab...`);
+    chrome.tabs.create({ url: url, active: false }, (newTab) => {
+        if (chrome.runtime.lastError || !newTab) { void chrome.runtime.lastError; return; }
+        setTimeout(() => {
+            chrome.tabs.remove(newTab.id, () => { void chrome.runtime.lastError; });
+            showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Sync complete!`);
+        }, 16000);
+    });
+}
+
 function triggerSyncNow(provider) {
     const url = provider === "claude" 
         ? "https://claude.ai/settings/usage" 
@@ -2889,6 +2910,24 @@ function triggerSyncNow(provider) {
         chrome.tabs.query({ url: queryPattern }, (tabs) => {
             // Zwijg netjes als Chrome de tabs nu niet wil bewerken (bv. tijdens tab-drag)
             if (chrome.runtime.lastError || !tabs) { void chrome.runtime.lastError; return; }
+
+            // Claude: elke open claude.ai-tab kan de JSON-API bevragen — geen reload nodig
+            // en de usage-pagina hoeft niet open te staan. Dit is het snelle pad (~0,2s).
+            if (provider === "claude" && tabs.length) {
+                let answered = false;
+                tabs.forEach(t => {
+                    chrome.tabs.sendMessage(t.id, { type: "REFRESH_NOW", provider: "claude" }, (resp) => {
+                        void chrome.runtime.lastError;   // tabs zonder content script negeren
+                        if (answered || !resp || !resp.ok) return;
+                        answered = true;
+                        showToast(`<i class="fa-solid fa-bolt" style="color: var(--accent-green);"></i> Claude bijgewerkt via API.`);
+                    });
+                });
+                // Geen enkel tabblad antwoordde op tijd → open alsnog een achtergrondtab.
+                setTimeout(() => { if (!answered) openBackgroundScrapeTab(url); }, 1500);
+                return;
+            }
+
             // Find an existing tab on the settings/analytics page
             const existingTab = tabs.find(t => t.url && t.url.includes(provider === "claude" ? "settings/usage" : "analytics"));
 
@@ -2900,16 +2939,7 @@ function triggerSyncNow(provider) {
                     void chrome.runtime.lastError;
                 });
             } else {
-                showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> No active tab found. Opening a temporary background tab...`);
-                // Achtergrond-tab: gebruiker blijft op huidige scherm
-                chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                    if (chrome.runtime.lastError || !newTab) { void chrome.runtime.lastError; return; }
-                    // Iets langere wachttijd, want background tabs laden trager
-                    setTimeout(() => {
-                        chrome.tabs.remove(newTab.id, () => { void chrome.runtime.lastError; });
-                        showToast(`<i class="fa-solid fa-circle-check" style="color: var(--accent-green);"></i> Sync complete!`);
-                    }, 8500);
-                });
+                openBackgroundScrapeTab(url);
             }
         });
     } else {
@@ -3799,10 +3829,20 @@ function parseClaudeSessionTime(resetSession, windowMs, elapsedMs = 0, resetSess
 }
 
 // Claude weekly: dagnaam / tomorrow / today / relatief "6d 17u" (EN+NL).
-function parseClaudeWeeklyTime(resetWeekly, now) {
+function parseClaudeWeeklyTime(resetWeekly, now, resetWeeklyAbsoluteTs = null) {
     let timePct = 0, timerText = "Tuesday 06:00";
-    if (!resetWeekly) return { timePct, timerText };
     const weekMs = 7 * 24 * 60 * 60 * 1000;
+
+    // Exacte tijdstempel uit Claude's eigen API → geen tekstparsing, geen tijdzone-gokwerk.
+    if (resetWeeklyAbsoluteTs) {
+        const diffMs = Math.max(0, resetWeeklyAbsoluteTs - now);
+        return {
+            timePct: Math.min(100, (diffMs / weekMs) * 100),
+            timerText: diffMs === 0 ? "Resetting…" : formatWeeklyTimeMs(diffMs)
+        };
+    }
+
+    if (!resetWeekly) return { timePct, timerText };
     const dayMatch = resetWeekly.match(/(mon|tue|wed|thu|fri|sat|sun|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag)\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)/i);
     const tomorrowMatch = resetWeekly.match(/(?:tomorrow|morgen)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
     const todayMatch = resetWeekly.match(/(?:today|vandaag)\s+(?:at|om)?\s*(\d{1,2}):(\d{2})\s*(am|pm)?/i);
@@ -3899,7 +3939,7 @@ function computeProviderPace(provider, sync, now, monthlySync) {
         const windowMs  = (state.userSettings.claude.windowHours || 5) * 3600000;
         const elapsed   = sync.lastSynced ? Math.max(0, now - sync.lastSynced) : 0;
         const s = parseClaudeSessionTime(sync.resetSession, windowMs, elapsed, sync.resetSessionAbsoluteTs || null);
-        const w = parseClaudeWeeklyTime(sync.resetWeekly, now);
+        const w = parseClaudeWeeklyTime(sync.resetWeekly, now, sync.resetWeeklyAbsoluteTs || null);
         sections.push({ title: "Current Session (Pace)", capPct: sync.pctRemaining, timePct: s.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(s.timerText)}</span>` });
         sections.push({ title: "Weekly Limit (Pace)", capPct: sync.pctRemainingWeekly, timePct: w.timePct, resetLabel: `in <span class="font-mono">${escapeHtmlSafe(w.timerText)}</span>` });
     } else if (provider === "chatgpt") {

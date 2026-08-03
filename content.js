@@ -396,12 +396,19 @@ function triggerScrape() {
     const url = window.location.href;
     logSync("[Scraper] URL gedetecteerd: " + url);
     
-    if (url.includes("claude.ai") && url.includes("settings/usage")) {
-        logSync("[Scraper] Claude usage page gedetecteerd. Start scan...");
-        // Claude's SPA rendert soms eerst een cached/tussentijds percentage voordat de
-        // echte usage-API-data binnenkomt. Niet meteen bij de eerste treffer stoppen —
-        // wachten tot de pagina een moment stabiel is, dan pas versturen.
-        observeAndScrapeStable(scrapeClaudeUsage, { settleMs: 900, maxMs: 9000 });
+    if (url.includes("claude.ai")) {
+        // Snelle pad: de JSON-API werkt op elke claude.ai-pagina, dus de usage-pagina
+        // hoeft niet open te staan en er hoeft niets gerenderd te worden.
+        fetchClaudeUsageViaApi().catch(err => {
+            logSync(`[Scraper] Claude API-pad mislukt (${err.message || err}) — terugvallen op de pagina uitlezen.`);
+            // Vangnet: alleen zinvol als we daadwerkelijk op de usage-pagina staan.
+            if (url.includes("settings/usage")) {
+                // Claude's SPA rendert soms eerst een cached/tussentijds percentage voordat de
+                // echte data binnenkomt. Niet meteen bij de eerste treffer stoppen —
+                // wachten tot de pagina een moment stabiel is, dan pas versturen.
+                observeAndScrapeStable(scrapeClaudeUsage, { settleMs: 900, maxMs: 9000 });
+            }
+        });
     } else if (url.includes("chatgpt.com") && url.includes("analytics")) {
         logSync("[Scraper] ChatGPT analytics page gedetecteerd. Start scan...");
         observeAndScrape(scrapeChatGPTUsage, false); // Do not disconnect so it scrapes after tab clicks!
@@ -445,6 +452,30 @@ function observeAndScrapeStable(scrapeFn, opts) {
     observer.observe(document.body, { childList: true, subtree: true });
     setTimeout(finish, maxMs);
 }
+
+/* Verzoek vanuit de extensie om NU opnieuw te meten, zonder tabblad-reload.
+   Hierdoor is een refresh op een open claude.ai-tab vrijwel instant en ziet de
+   gebruiker niets gebeuren (geen herladende pagina, geen flitsend tabblad). */
+try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (!msg || msg.type !== "REFRESH_NOW") return;
+        if (msg.provider === "claude" && window.location.href.includes("claude.ai")) {
+            // force: een expliciete refresh moet altijd verse cijfers opleveren.
+            fetchClaudeUsageViaApi(true)
+                .then(() => sendResponse({ ok: true, via: "api" }))
+                .catch(err => {
+                    // Vangnet: pagina uitlezen als de API onverhoopt weigert.
+                    if (window.location.href.includes("settings/usage")) {
+                        observeAndScrapeStable(scrapeClaudeUsage, { settleMs: 900, maxMs: 9000 });
+                        sendResponse({ ok: true, via: "dom" });
+                    } else {
+                        sendResponse({ ok: false, error: String(err && err.message || err) });
+                    }
+                });
+            return true; // async antwoord
+        }
+    });
+} catch (e) { /* geen extensiecontext */ }
 
 // Watch for DOM changes to scrape data dynamically once loaded
 function observeAndScrape(scrapeFn, disconnectOnFound = true) {
@@ -494,6 +525,91 @@ function scrapeZaiUsage() {
 // Bewaart het laatst berekende Claude-resultaat tijdens de stabilisatiefase
 // (zie observeAndScrapeStable) zodat alleen de finale, stabiele meting verstuurd wordt.
 let _claudeStablePayload = null;
+
+/* ==========================================================================
+   Claude usage via de officiële JSON-API (snelle pad)
+   --------------------------------------------------------------------------
+   Claude.ai levert de cijfers zelf via GET /api/organizations/<uuid>/usage:
+     { five_hour: { utilization, resets_at }, seven_day: { utilization, resets_at }, ... }
+   Dat is onvergelijkbaar veel beter dan de pagina uitlezen:
+     - snel        : één request (~0,2s) i.p.v. een zware SPA laten renderen (8-16s)
+     - betrouwbaar : geen last van promobanners, DOM-wijzigingen of taalinstellingen
+     - exact       : resets_at is een echte tijdstempel i.p.v. geparste tekst
+   Werkt op ELKE claude.ai-pagina (same-origin, sessiecookies), dus de usage-pagina
+   hoeft niet eens open te staan. DOM-scraping blijft als vangnet bestaan.
+   ========================================================================== */
+function claudeApi(path) {
+    return fetch(path, { credentials: "include", cache: "no-store" })
+        .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status} op ${path}`)));
+}
+
+// Kies de abonnements-organisatie (capability "chat"), niet een losse API-org.
+function pickClaudeSubscriptionOrg(orgs) {
+    if (!Array.isArray(orgs) || !orgs.length) return null;
+    const hasChat = orgs.find(o => Array.isArray(o.capabilities) && o.capabilities.includes("chat"));
+    return hasChat || orgs[0];
+}
+
+/* Rem op automatische metingen. claude.ai is een SPA: bij het wisselen van chat verandert
+   de URL, en de URL-watcher zou dan telkens opnieuw meten. Eén meting per minuut is ruim
+   voldoende voor een verbruiksdashboard. Een expliciete refresh (force) omzeilt de rem. */
+let _lastClaudeApiFetch = 0;
+const CLAUDE_API_MIN_INTERVAL_MS = 60000;
+
+function fetchClaudeUsageViaApi(force = false) {
+    const now = Date.now();
+    if (!force && now - _lastClaudeApiFetch < CLAUDE_API_MIN_INTERVAL_MS) {
+        return Promise.resolve(false);   // recent genoeg gemeten
+    }
+    _lastClaudeApiFetch = now;
+
+    return claudeApi("/api/organizations")
+        .then(orgs => {
+            const org = pickClaudeSubscriptionOrg(orgs);
+            if (!org || !org.uuid) throw new Error("geen bruikbare organisatie gevonden");
+            return claudeApi(`/api/organizations/${org.uuid}/usage`);
+        })
+        .then(u => {
+            if (!u || typeof u !== "object") throw new Error("lege usage-respons");
+            const fh = u.five_hour || {};
+            const sd = u.seven_day || {};
+            // utilization = percentage VERBRUIKT; het dashboard rekent in "over".
+            const pctSession = typeof fh.utilization === "number" ? Math.max(0, 100 - fh.utilization) : null;
+            const pctWeekly  = typeof sd.utilization === "number" ? Math.max(0, 100 - sd.utilization) : null;
+            if (pctSession === null && pctWeekly === null) throw new Error("geen utilization-velden");
+
+            const sessionTs = fh.resets_at ? Date.parse(fh.resets_at) : NaN;
+            const weeklyTs  = sd.resets_at ? Date.parse(sd.resets_at) : NaN;
+
+            safeSendMessage({
+                type: "SYNC_FROM_TAB",
+                provider: "claude",
+                data: {
+                    pctRemaining: pctSession !== null ? pctSession : 100,
+                    pctRemainingWeekly: pctWeekly,
+                    // Absolute tijdstempels zijn leidend; de tekstvelden blijven gevuld
+                    // zodat oudere weergavecode niets mist.
+                    resetSessionAbsoluteTs: isNaN(sessionTs) ? undefined : sessionTs,
+                    resetWeeklyAbsoluteTs:  isNaN(weeklyTs)  ? undefined : weeklyTs,
+                    resetSession: isNaN(sessionTs) ? "" : `Resets in ${formatMsAsShort(sessionTs - Date.now())}`,
+                    resetWeekly:  isNaN(weeklyTs)  ? "" : `Resets ${new Date(weeklyTs).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })}`,
+                    tokensUsed: pctSession !== null ? Math.round(((100 - pctSession) / 100) * 200000) : 0,
+                    account: detectClaudeAccount() || undefined,
+                    source: "api",
+                    summary: `Via API: Sessie=${pctSession}% over, Week=${pctWeekly}% over.`
+                }
+            });
+            logSync(`[Scraper] Claude usage via API: sessie=${pctSession}% over, week=${pctWeekly}% over`);
+            return true;
+        });
+}
+
+function formatMsAsShort(ms) {
+    const v = Math.max(0, ms);
+    const h = Math.floor(v / 3600000);
+    const m = Math.floor((v % 3600000) / 60000);
+    return h > 0 ? `${h} hr ${m} min` : `${m} min`;
+}
 
 // Claude toont soms promotietekst tussen de kop en de echte meter (bv. "temporarily
 // boosted... 50% higher"). Zo'n percentage staat NOOIT direct naast "used"/"remaining" —
