@@ -4,6 +4,43 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.2] — 2026-08-03
+
+### Telefoon bleef eeuwig op een oude versie hangen
+
+**Waargenomen:** de telefoon draaide v0.26.3 terwijl de PWA al v0.27.1 serveerde, en dat
+was nergens zichtbaar.
+
+**Oorzaak:** een geïnstalleerde PWA wordt niet herláden maar hervat. Er is dan geen
+navigatie, dus er wordt geen nieuwe `index.html` opgehaald. De bestaande update-check
+(`registration.update()` bij start + elke 5 minuten) hielp niet: die interval staat
+bevroren zolang de app op de achtergrond staat, en wie de app steeds maar kort opent komt
+nooit aan die 5 minuten toe. Resultaat: de telefoon checkte in de praktijk nóóit op een
+update.
+
+**Opgelost:** `registration.update()` draait nu ook bij elke `visibilitychange` naar
+zichtbaar. Levert de nieuwe service worker → `skipWaiting` → `controllerchange` → reload,
+dus de telefoon loopt vanzelf bij zodra je hem openslaat. Zelfde klasse fout als de
+SSE-stream in v0.26.3 — achtergrond-timers op een telefoon zijn geen betrouwbaar mechanisme.
+
+### Nieuw: "Versions & devices" onder Instellingen → Mobile Sync (PWA)
+
+Versiedrift tussen PC en telefoon was onzichtbaar; je merkte alleen dát er iets niet
+werkte. Elk apparaat publiceert nu zijn versie in de gedeelde bin:
+
+- **PC's** schrijven `appVersion` in hun eigen `status/<pid>`-node (uit `manifest.json`).
+- **Kijk-apparaten** (telefoon/browser, die geen status-node hebben) schrijven een klein
+  regeltje in `meta.clients`: apparaatlabel, versie, laatst gezien. Wordt gepubliceerd bij
+  het starten, bij terugkomen in beeld en bij elke handmatige refresh, en na een week
+  opgeruimd zodat `meta` niet ongemerkt groeit.
+
+Het blok toont elk apparaat met versie en "laatst gezien", zet een oudere versie in geel
+met een waarschuwingsdriehoek, en legt uit wat je moet doen (telefoon helemaal afsluiten
+en heropenen / extensie herladen). De build-info-regel is meeverhuisd van het Sync
+Log-blok naar dit blok — daar hoort hij thuis.
+
+---
+
 ## [0.27.1] — 2026-08-03
 
 ### Geen open-en-dicht klappende tabbladen meer bij een Claude-refresh

@@ -1024,7 +1024,8 @@ function maybeWriteHeartbeat(config, profileId, profileLabel) {
         // V2 (Firebase): alleen de eigen status-node bijwerken (geen gedeelde-node-contentie).
         if (cs2IsFirebase(config)) {
             cs2UpdateEnc(config, `status/${profileId}`, (s) => {
-                s.lastSeen = Date.now(); s.label = profileLabel; s.pcOnline = true; delete s.lastError; return s;
+                s.lastSeen = Date.now(); s.label = profileLabel; s.pcOnline = true;
+                s.appVersion = extensionVersion(); delete s.lastError; return s;
             }).catch(() => {});
             if (CS2_WRITE_LEGACY) {
                 cs2UpdateEnc(config, "data", (doc) => {
@@ -1094,6 +1095,13 @@ function writeLastError(config, profileId, profileLabel, provider, message) {
     }).catch(() => {});
 }
 
+/* Versie van deze extensie, zoals elk apparaat hem in de cloud publiceert. Zo kan de
+   instellingenpagina laten zien of PC en telefoon dezelfde versie draaien — versiedrift
+   was tot nu toe onzichtbaar (telefoon zat op 0.26.3 terwijl de PC al 0.27.1 was). */
+function extensionVersion() {
+    try { return chrome.runtime.getManifest().version; } catch (e) { return "?"; }
+}
+
 function pushUserDataToCloud(user) {
     return new Promise((resolve) => {
         chrome.storage.local.get(["lt_sync_config", "lt_profile_id", "lt_profile_label"], (res) => {
@@ -1115,7 +1123,8 @@ function pushUserDataToCloud(user) {
                 const writes = [
                     cs2UpdateEnc(config, `status/${profileId}`, (s) => {
                         s.label = profileLabel; s.syncStatus = syncStatus; s.lastSeen = Date.now();
-                        s.pcOnline = true; delete s.lastError; return s;
+                        s.pcOnline = true; s.appVersion = extensionVersion();
+                        delete s.lastError; return s;
                     }),
                     cs2PutEnc(config, `archive/${profileId}`, {
                         logs: cs2PruneLogs(user.logs || []), threads: user.threads || []

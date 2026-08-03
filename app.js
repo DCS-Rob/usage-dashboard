@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.27.1";
+const APP_VERSION = "0.27.2";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -67,6 +67,79 @@ function renderBuildInfoStrip() {
     } catch (outerErr) {
         slot.textContent = "build-info fout: " + (outerErr.message || outerErr);
     }
+}
+
+/* ==========================================================================
+   VERSIES & APPARATEN  (Instellingen → Mobile Sync)
+   Toont elk apparaat dat op deze koppeling zit, met zijn versie en wanneer het voor het
+   laatst iets van zich liet horen. Aanleiding: de telefoon draaide v0.26.3 terwijl de PC
+   al op v0.27.1 zat, en dat was nergens te zien — je zag alleen dat "de sync niet werkt".
+   PC's melden zich via hun status-node, kijk-apparaten via meta.clients.
+   ========================================================================== */
+function getActiveSyncConfig() {
+    const client = (typeof isSyncClient === "function") ? isSyncClient() : null;
+    if (client) return Promise.resolve(client);
+    if (!(typeof chrome !== "undefined" && chrome.storage && chrome.storage.local)) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        chrome.storage.local.get(["lt_sync_config"], (res) => resolve(res.lt_sync_config || null));
+    });
+}
+
+function renderSyncDevices() {
+    const slot = document.getElementById("sync-devices-list");
+    if (!slot) return;   // Settings-tab nog niet gerenderd
+
+    const btn = document.getElementById("btn-refresh-devices");
+    if (btn && !btn.dataset.wired) {
+        btn.dataset.wired = "1";
+        btn.addEventListener("click", () => { publishPwaPresence(true); renderBuildInfoStrip(); renderSyncDevices(); });
+    }
+
+    const row = (name, version, when, extra) => {
+        const outdated = version && version !== "?" && version !== APP_VERSION;
+        const versionColor = outdated ? "var(--accent-yellow)" : "var(--accent-green)";
+        return `<div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+            <span style="color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${name}</span>
+            <span style="white-space:nowrap;">
+                <strong style="color:${versionColor}; font-family:monospace;">v${version || "?"}</strong>
+                <span style="color:var(--text-muted); margin-left:6px;">${when}</span>
+                ${outdated ? ` <i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-yellow);" title="Runs an older version than this dashboard (v${APP_VERSION})"></i>` : ""}
+                ${extra || ""}
+            </span>
+        </div>`;
+    };
+
+    const thisDevice = row(
+        `<i class="fa-solid fa-${DB.isExtension ? "desktop" : "mobile-screen-button"}"></i> This device`,
+        APP_VERSION, "now"
+    );
+
+    getActiveSyncConfig().then((cfg) => {
+        if (!cfg || !cfg.binId) { slot.innerHTML = thisDevice + `<p class="desc" style="margin-top:6px;">Not paired — no other devices.</p>`; return; }
+
+        cs2ReadState(cfg).then((doc) => {
+            const rows = [thisDevice];
+            const profiles = (doc && doc.profiles) || {};
+            Object.keys(profiles).forEach((pid) => {
+                const p = profiles[pid] || {};
+                rows.push(row(`<i class="fa-solid fa-desktop"></i> ${p.label || pid}`, p.appVersion, p.lastSeen ? formatTimeAgo(p.lastSeen) : "—"));
+            });
+            const clients = (doc && doc.clients) || {};
+            Object.keys(clients).forEach((cid) => {
+                if (cid === pwaDeviceId()) return;   // dat is dit toestel zelf
+                const c = clients[cid] || {};
+                rows.push(row(`<i class="fa-solid fa-mobile-screen-button"></i> ${c.label || cid}`, c.appVersion, c.lastSeen ? formatTimeAgo(c.lastSeen) : "—"));
+            });
+
+            const anyOutdated = [...Object.values(profiles), ...Object.values(clients)]
+                .some(d => d && d.appVersion && d.appVersion !== APP_VERSION);
+            if (anyOutdated) {
+                rows.push(`<p class="desc" style="margin-top:8px; color:var(--accent-yellow);">
+                    <i class="fa-solid fa-circle-info"></i> A device runs an older version. On a phone: close the app fully and reopen it. In Chrome: reload the extension on <code>chrome://extensions</code>.</p>`);
+            }
+            slot.innerHTML = rows.join("");
+        }).catch(() => { slot.innerHTML = thisDevice + `<p class="desc" style="margin-top:6px;">Could not read the other devices.</p>`; });
+    });
 }
 
 // 1. DUAL STORAGE INTERFACE (Adapts automatically to Chrome Extension or Standard Browser environments)
@@ -189,6 +262,10 @@ document.addEventListener("DOMContentLoaded", () => {
     // (zie nav-tab click handler in setupEventListeners). Doe één rendering
     // bij start zodat het slot meteen gevuld is als gebruiker daar al staat.
     setTimeout(renderBuildInfoStrip, 500);
+    setTimeout(renderSyncDevices, 800);
+    // Meld dit kijk-apparaat (telefoon/browser) aan in de gedeelde meta-node, zodat op de
+    // PC zichtbaar is welke versie de telefoon draait.
+    setTimeout(() => publishPwaPresence(true), 3000);
 
     // Register Service Worker for PWA compliance (standalone web mode only)
     if (!DB.isExtension && "serviceWorker" in navigator) {
@@ -201,6 +278,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 try { reg.update(); } catch (e) { /* ignore */ }
                 // En blijf checken iedere 5 minuten zolang de PWA open is.
                 setInterval(() => { try { reg.update(); } catch (e) {} }, 5 * 60 * 1000);
+
+                /* Cruciaal op de telefoon: een geïnstalleerde PWA wordt niet herladen
+                   maar hervat. Er is dan géén navigatie, en de interval hierboven staat
+                   bevroren zolang de app op de achtergrond staat. Wie de app steeds maar
+                   kort opent, checkt dus nóóit op een update en blijft eeuwig op een oude
+                   versie hangen (Robs telefoon zat zo vast op v0.26.3 terwijl v0.27.1 al
+                   live stond). Daarom: bij elke keer dat de app in beeld komt opnieuw
+                   checken. Levert de nieuwe SW → skipWaiting → controllerchange → reload. */
+                document.addEventListener("visibilitychange", () => {
+                    if (document.visibilityState === "visible") {
+                        try { reg.update(); } catch (e) { /* ignore */ }
+                    }
+                });
 
                 if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
                 reg.addEventListener("updatefound", () => {
@@ -2301,9 +2391,10 @@ function setupEventListeners() {
             tab.classList.add("active");
             pane.classList.add("active");
 
-            // Build info verversen wanneer Settings open gaat
+            // Build info + apparatenlijst verversen wanneer Settings open gaat
             if (paneId === "tab-settings") {
                 renderBuildInfoStrip();
+                renderSyncDevices();
             }
         });
     });
@@ -3365,6 +3456,7 @@ function cs2ReadState(config) {
                 refreshRequestedAt: meta.refreshRequestedAt,
                 refreshClaimedBy: meta.refreshClaimedBy,
                 refreshClaimedAt: meta.refreshClaimedAt,
+                clients: meta.clients || {},   // kijk-apparaten (telefoon/browser) + hun versie
                 _schema: CS2_SCHEMA
             };
         }
@@ -3422,6 +3514,7 @@ function restartPwaCloudStream(reason) {
     if (_firebaseStreamPWA) { try { _firebaseStreamPWA.close(); } catch (e) {} }
     _firebaseStreamPWA = startFirebaseStreaming(cfg, () => loadCloudUserData(false));
     loadCloudUserData(false);
+    publishPwaPresence();
 }
 
 let lastSyncTime = null;
@@ -4592,6 +4685,9 @@ function requestRemoteRefresh() {
         setRefreshStatus("pc-seen");
         showToast(`<i class="fa-solid fa-spinner fa-spin"></i> PC received the request — scraping in progress…`);
         remoteRefreshInFlight = false; // trigger-fase klaar; fast-poll mag opnieuw getriggerd worden
+        // Versie van dit apparaat meteen meepubliceren: als de sync straks mislukt, is op
+        // de PC te zien welk apparaat het vroeg en op welke versie het draait.
+        publishPwaPresence(true);
         startFastPollingForRemoteSync(baseline);
     };
     const failed = (err) => {
@@ -4629,6 +4725,53 @@ function requestRemoteRefresh() {
     })
     .then(proceed)
     .catch(failed);
+}
+
+/* ==========================================================================
+   AANWEZIGHEID VAN KIJK-APPARATEN (PWA) — v0.27.2
+   De extensie publiceert zijn versie in zijn eigen status-node, maar de PWA schreef
+   nergens iets over zichzelf. Daardoor was op de PC niet te zien dat de telefoon nog op
+   een oude versie draaide. Elke PWA schrijft nu een klein regeltje in de gedeelde
+   meta-node: welk apparaat, welke versie, wanneer voor het laatst gezien.
+   Bewust piepklein gehouden — meta wordt door de telefoon continu gestreamd.
+   ========================================================================== */
+const PWA_PRESENCE_INTERVAL_MS = 5 * 60 * 1000;
+let _lastPresencePublish = 0;
+
+function pwaDeviceId() {
+    try {
+        let id = localStorage.getItem("lt_pwa_device_id");
+        if (!id) {
+            id = "dev-" + Math.random().toString(36).slice(2, 8);
+            localStorage.setItem("lt_pwa_device_id", id);
+        }
+        return id;
+    } catch (e) { return "dev-unknown"; }
+}
+
+function pwaDeviceLabel() {
+    const ua = navigator.userAgent || "";
+    if (/Android/i.test(ua))          return "Phone (Android)";
+    if (/iPhone|iPad|iPod/i.test(ua)) return "Phone (iOS)";
+    return "Browser";
+}
+
+function publishPwaPresence(force = false) {
+    const cfg = isSyncClient();
+    if (!cfg || !cs2IsFirebase(cfg)) return;
+    const now = Date.now();
+    if (!force && now - _lastPresencePublish < PWA_PRESENCE_INTERVAL_MS) return;
+    _lastPresencePublish = now;
+
+    cs2UpdateEnc(cfg, "meta", (m) => {
+        if (!m.clients) m.clients = {};
+        m.clients[pwaDeviceId()] = { label: pwaDeviceLabel(), appVersion: APP_VERSION, lastSeen: now };
+        // Apparaten die een week niet gezien zijn opruimen, anders groeit meta ongemerkt.
+        Object.keys(m.clients).forEach((id) => {
+            if (now - (m.clients[id].lastSeen || 0) > 7 * 24 * 60 * 60 * 1000) delete m.clients[id];
+        });
+        return m;
+    }).catch(() => { /* aanwezigheid is nooit belangrijk genoeg om iets te laten falen */ });
 }
 
 let fastPollIntervalId = null;
@@ -5135,7 +5278,6 @@ function applyMobileSyncUI() {
                     <button type="button" id="btn-mobile-refresh" class="btn-primary w-100 mt-3" style="padding: 10px 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 8px;">
                         <i class="fa-solid fa-arrows-rotate"></i> Ververs handmatig
                     </button>
-                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Loading build info...</div>
                 `;
                 
                 const btnRefresh = document.getElementById("btn-mobile-refresh");
@@ -5145,6 +5287,10 @@ function applyMobileSyncUI() {
                         requestRemoteRefresh();
                     });
                 }
+            } else if (box.id === "sync-devices-box") {
+                // Versies & apparaten blijft ook op de telefoon zichtbaar — juist dáár wil
+                // je kunnen zien dat dit toestel op een oudere versie draait dan de PC.
+                box.style.display = "";
             } else {
                 box.style.display = "none";
             }

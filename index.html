@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Chart.js for Analytics (bundled locally — CDN blocked by MV3 CSP) -->
     <script src="lib/chart.min.js"></script>
-    <link rel="stylesheet" href="style.css?v=0.27.1">
+    <link rel="stylesheet" href="style.css?v=0.27.2">
 </head>
 <body>
     <!-- Animated Ambient Background Blobs -->
@@ -849,7 +849,6 @@
                                     <div id="sync-debug-logs" class="font-mono" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 4px; padding: 10px; font-size: 0.75rem; max-height: 180px; overflow-y: auto; color: #a0aec0; margin-top: 5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;">
                                         No log data available. Click sync or open a settings page to generate logs.
                                     </div>
-                                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Loading build info...</div>
                                 </div>
                             </div>
                         </div>
@@ -860,6 +859,17 @@
                             <p class="section-desc">Pair your mobile phone to view your dashboard live on the go.</p>
 
                             <div class="scraper-status-list mt-3">
+                                <!-- Versies & apparaten: laat in één oogopslag zien of PC en telefoon
+                                     dezelfde versie draaien. Versiedrift was hiervoor onzichtbaar. -->
+                                <div class="status-item-box" id="sync-devices-box" style="margin-bottom: 12px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <strong>Versions &amp; devices:</strong>
+                                        <button id="btn-refresh-devices" class="btn-small" style="padding: 2px 6px; font-size: 0.7rem;"><i class="fa-solid fa-arrows-rotate"></i> Check</button>
+                                    </div>
+                                    <div id="sync-devices-list" style="margin-top: 8px; font-size: 0.75rem;">Loading…</div>
+                                    <div id="build-info-slot" style="margin-top: 8px; font-size: 0.7rem; font-family: monospace; color: rgba(255,255,255,0.45); letter-spacing: 0.3px;">Loading build info...</div>
+                                </div>
+
                                 <div class="status-item-box" id="sync-setup-box">
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                         <strong>Status:</strong>
@@ -1143,6 +1153,6 @@
     </div>
 
     <!-- Script Entry -->
-    <script src="app.js?v=0.27.1"></script>
+    <script src="app.js?v=0.27.2"></script>
 </body>
 </html>
