@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.27.2";
+const APP_VERSION = "0.27.3";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -85,6 +85,41 @@ function getActiveSyncConfig() {
     });
 }
 
+/* Ontsnappingsluik als een apparaat op een oude versie blijft hangen. De service worker
+   serveert de app uit zijn eigen cache; zit die vast, dan helpt "opnieuw laden" niet, want
+   de reload komt uit diezelfde cache. Deze knop gooit de service worker én alle caches
+   weg en haalt daarna alles vers op. Werkt lokaal — er verandert niets in de cloud. */
+function forceAppUpdate() {
+    // Extensie: gewoon de extensie zelf herstarten (dat leest alle bestanden opnieuw in).
+    if (DB.isExtension) {
+        showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Reloading the extension...`);
+        try { chrome.runtime.reload(); }
+        catch (e) { showToast(`<i class="fa-solid fa-circle-exclamation"></i> Reload it manually on chrome://extensions.`); }
+        return;
+    }
+
+    showToast(`<i class="fa-solid fa-download fa-fade"></i> Fetching the newest version...`);
+    const cleanup = [];
+    if ("serviceWorker" in navigator) {
+        cleanup.push(
+            navigator.serviceWorker.getRegistrations()
+                .then(regs => Promise.all(regs.map(r => r.unregister())))
+                .catch(() => {})
+        );
+    }
+    if (window.caches) {
+        cleanup.push(
+            caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => {})
+        );
+    }
+    Promise.all(cleanup).then(() => {
+        // Cache-buster in de URL: anders kan de HTTP-cache van de browser alsnog de oude
+        // index.html teruggeven, en dan waren we niets opgeschoten.
+        const base = window.location.origin + window.location.pathname;
+        window.location.replace(`${base}?fresh=${Date.now()}`);
+    });
+}
+
 function renderSyncDevices() {
     const slot = document.getElementById("sync-devices-list");
     if (!slot) return;   // Settings-tab nog niet gerenderd
@@ -93,6 +128,11 @@ function renderSyncDevices() {
     if (btn && !btn.dataset.wired) {
         btn.dataset.wired = "1";
         btn.addEventListener("click", () => { publishPwaPresence(true); renderBuildInfoStrip(); renderSyncDevices(); });
+    }
+    const btnForce = document.getElementById("btn-force-update");
+    if (btnForce && !btnForce.dataset.wired) {
+        btnForce.dataset.wired = "1";
+        btnForce.addEventListener("click", forceAppUpdate);
     }
 
     const row = (name, version, when, extra) => {
@@ -2960,6 +3000,40 @@ function setRefreshStatus(step) {
     bar.style.display = "flex";
     bar.className = "refresh-status-bar " + (s.cls || "");
     bar.textContent = s.text;
+
+    /* Bij een mislukking is de balk een doodlopend bericht: je leest dat het niet werkt en
+       kunt er niets mee. Maak hem daarom klikbaar naar het blok waar je het wél kunt
+       oplossen (versies per apparaat + Force update). */
+    const isFailure = step === "error" || step === "timeout" || step === "slow-polling";
+    bar.style.cursor = isFailure ? "pointer" : "";
+    bar.title = isFailure ? "Tap for versions and the update button" : "";
+    if (isFailure) {
+        bar.textContent = s.text + "  ›  Tap to fix";
+        if (!bar.dataset.wired) {
+            bar.dataset.wired = "1";
+            bar.addEventListener("click", () => {
+                if (bar.className.indexOf("rsb-error") < 0 && bar.className.indexOf("rsb-warn") < 0) return;
+                openVersionsAndUpdateBlock();
+            });
+        }
+    }
+}
+
+/* Springt naar Instellingen → Mobile Sync → "Versions & devices" en laat het blok even
+   oplichten, zodat duidelijk is wáár je terechtgekomen bent. */
+function openVersionsAndUpdateBlock() {
+    const settingsTab = document.querySelector('[data-tab="tab-settings"]');
+    if (settingsTab) settingsTab.click();
+    setTimeout(() => {
+        renderBuildInfoStrip();
+        renderSyncDevices();
+        const box = document.getElementById("sync-devices-box");
+        if (!box) return;
+        box.scrollIntoView({ behavior: "smooth", block: "center" });
+        box.style.transition = "box-shadow 0.4s ease";
+        box.style.boxShadow = "0 0 0 2px var(--accent-yellow)";
+        setTimeout(() => { box.style.boxShadow = ""; }, 2500);
+    }, 150);
 }
 
 function formatTimeAgo(timestamp) {
@@ -4855,7 +4929,21 @@ function startFastPollingForRemoteSync(baseline) {
                     clearInterval(fastPollIntervalId);
                     fastPollIntervalId = null;
                     setRefreshStatus("error");
-                    showToast(`<i class="fa-solid fa-circle-xmark" style="color: var(--accent-red);"></i> PC not responding. Is Chrome open on your PC?`);
+                    /* "PC not responding" alleen is niet te gebruiken: je weet niet of de PC
+                       stil is of dat het verzoek nooit is aangekomen. Vertel daarom wanneer
+                       de PC voor het laatst iets naar de cloud schreef. Recent = het verzoek
+                       komt niet aan; lang geleden = de extensie ligt stil. */
+                    cs2ReadState(isSyncClient())
+                        .then((doc) => {
+                            const profiles = (doc && doc.profiles) || {};
+                            const newest = Object.values(profiles)
+                                .reduce((max, p) => Math.max(max, (p && p.lastSeen) || 0), 0);
+                            const detail = newest
+                                ? `PC last wrote data ${formatTimeAgo(newest)}.`
+                                : `No PC has ever written to this pairing.`;
+                            showToast(`<i class="fa-solid fa-circle-xmark" style="color: var(--accent-red);"></i> PC not responding. ${detail}`);
+                        })
+                        .catch(() => showToast(`<i class="fa-solid fa-circle-xmark" style="color: var(--accent-red);"></i> PC not responding, and the cloud could not be read.`));
                     return;
                 }
                 setRefreshStatus("slow-polling");
@@ -4887,7 +4975,22 @@ function updateMobileSyncIndicator(isSuccess) {
     const textSpan = liveSyncHeader ? liveSyncHeader.querySelector("span:not(.pulse-dot)") : null;
     
     const formattedTime = lastSyncTime ? new Date(lastSyncTime).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : "never";
-    
+
+    // De sync-pil in de kopbalk brengt je bij een fout naar het blok waar je het kunt
+    // oplossen (versies + Force update). Eén keer koppelen; de handler kijkt zelf of
+    // er op dat moment iets mis is.
+    if (liveSyncHeader && !liveSyncHeader.dataset.wired) {
+        liveSyncHeader.dataset.wired = "1";
+        liveSyncHeader.addEventListener("click", () => {
+            if (liveSyncHeader.dataset.failed === "1") openVersionsAndUpdateBlock();
+        });
+    }
+    if (liveSyncHeader) {
+        liveSyncHeader.dataset.failed = isSuccess ? "0" : "1";
+        liveSyncHeader.style.cursor = isSuccess ? "" : "pointer";
+        liveSyncHeader.title = isSuccess ? "" : "Tap for versions and the update button";
+    }
+
     if (isSuccess) {
         if (liveSyncHeader) {
             liveSyncHeader.style.background = "rgba(99, 102, 241, 0.08)";
@@ -4907,14 +5010,16 @@ function updateMobileSyncIndicator(isSuccess) {
             liveSyncHeader.style.background = "rgba(239, 68, 68, 0.08)";
             liveSyncHeader.style.borderColor = "rgba(239, 68, 68, 0.26)";
             liveSyncHeader.style.color = "var(--accent-red)";
-            if (textSpan) textSpan.innerText = "Sync Failed";
+            if (textSpan) textSpan.innerText = "Sync Failed ›";
             if (pulseDot) {
                 pulseDot.style.backgroundColor = "var(--accent-red)";
                 pulseDot.style.boxShadow = "0 0 6px var(--accent-red)";
             }
         }
         if (statusDesc) {
-            statusDesc.innerHTML = `This dashboard is linked live to the desktop extension.<br><strong style="color: var(--accent-red); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-exclamation"></i> Sync failed (retry active). Last sync: ${formattedTime}</strong>`;
+            statusDesc.innerHTML = `This dashboard is linked live to the desktop extension.<br><strong style="color: var(--accent-red); display: inline-flex; align-items: center; gap: 4px; margin-top: 8px;"><i class="fa-solid fa-circle-exclamation"></i> Sync failed (retry active). Last sync: ${formattedTime}</strong><br><button type="button" id="btn-sync-failed-help" class="btn-small" style="margin-top: 8px; font-size: 0.72rem; padding: 4px 8px;"><i class="fa-solid fa-wrench"></i> Check versions &amp; update</button>`;
+            const helpBtn = document.getElementById("btn-sync-failed-help");
+            if (helpBtn) helpBtn.addEventListener("click", openVersionsAndUpdateBlock);
         }
     }
 }

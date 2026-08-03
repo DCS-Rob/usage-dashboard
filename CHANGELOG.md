@@ -4,6 +4,40 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.3] — 2026-08-03
+
+### "Sync failed" is nu een knop in plaats van een doodlopend bericht
+
+Een rode melding vertelde je dát het misging, maar niet wat je eraan kon doen. Elke rode
+sync-melding brengt je nu naar Instellingen → Mobile Sync → *Versions & devices*, waar de
+versies per apparaat staan én de nieuwe updateknop:
+
+- de **statusbalk** ("PC did not respond…") krijgt er `› Tap to fix` bij en is aanklikbaar;
+- de **sync-pil in de kopbalk** ("Sync Failed ›") is aanklikbaar;
+- in het Mobile Sync-blok staat een knop **Check versions & update**.
+
+Het doelblok licht kort geel op, zodat duidelijk is waar je terechtkomt.
+
+### Nieuw: Force update-knop
+
+Als een apparaat op een oude versie blijft hangen, helpt "opnieuw laden" niet — de service
+worker serveert de app dan uit zijn eigen cache, dus de reload komt uit precies dezelfde
+oude cache. De knop **Force update** gooit de service worker én alle caches weg en haalt
+de app daarna vers op (met een cache-buster in de URL, anders geeft de HTTP-cache van de
+browser alsnog de oude `index.html` terug). In de extensie doet dezelfde knop een
+`chrome.runtime.reload()`.
+
+Getest op de echte PWA: een gemarkeerde cache was na één druk op de knop verdwenen en de
+app kwam terug op een verse URL.
+
+### "PC not responding" zegt nu ook wanneer de PC voor het laatst schreef
+
+De oude melding liet in het midden of de PC stil lag of dat het verzoek nooit aankwam. De
+melding bevat nu "PC last wrote data 3h ago" (of "No PC has ever written to this
+pairing"). Recent = het verzoek komt niet aan; lang geleden = de extensie ligt stil.
+
+---
+
 ## [0.27.2] — 2026-08-03
 
 ### Telefoon bleef eeuwig op een oude versie hangen
