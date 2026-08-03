@@ -4,6 +4,22 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.4] — 2026-08-03
+
+### Versienummer en Force update waren op de telefoon verdwenen
+
+**Fout van v0.27.2/0.27.3.** Het blok "Versions & devices" is geplaatst in het Mobile
+Sync-paneel, en `applyMobileSyncUI()` verbergt dat hele paneel op een gekoppeld
+kijk-apparaat (koppelen doe je immers op de PC). Gevolg: op de telefoon was er geen
+versienummer meer én geen Force update-knop — precies het apparaat waar je ze het hardst
+nodig hebt. De build-info-regel stond vóór v0.27.2 nog in het Sync Log-blok en was daar
+wél zichtbaar; door het verplaatsen is hij op de telefoon weggevallen.
+
+Het blok wordt nu op een kijk-apparaat verplaatst naar het paneel dat wél getoond wordt,
+en daarna opnieuw gerenderd.
+
+---
+
 ## [0.27.3] — 2026-08-03
 
 ### "Sync failed" is nu een knop in plaats van een doodlopend bericht

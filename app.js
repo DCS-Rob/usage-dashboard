@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.27.3";
+const APP_VERSION = "0.27.4";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -5393,13 +5393,25 @@ function applyMobileSyncUI() {
                     });
                 }
             } else if (box.id === "sync-devices-box") {
-                // Versies & apparaten blijft ook op de telefoon zichtbaar — juist dáár wil
-                // je kunnen zien dat dit toestel op een oudere versie draait dan de PC.
                 box.style.display = "";
             } else {
                 box.style.display = "none";
             }
         });
+    }
+
+    /* Het blok "Versions & devices" hangt in het Mobile Sync-paneel, en dat paneel wordt op
+       de telefoon in zijn geheel verborgen (koppelen doe je op de PC). Daardoor was op de
+       telefoon geen versienummer en geen Force update-knop meer te zien — precies het
+       apparaat waar je ze het hardst nodig hebt. Verplaats het blok daarom naar het paneel
+       dat de telefoon wél toont. */
+    const devicesBox = document.getElementById("sync-devices-box");
+    const visiblePanel = statusBoxes[0] && statusBoxes[0].parentElement;
+    if (devicesBox && visiblePanel && devicesBox.parentElement !== visiblePanel) {
+        visiblePanel.appendChild(devicesBox);
+        devicesBox.style.display = "";
+        renderBuildInfoStrip();
+        renderSyncDevices();
     }
 
     const liveSyncHeader = document.querySelector(".header-sync-status");

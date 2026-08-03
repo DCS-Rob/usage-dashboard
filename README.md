@@ -2,7 +2,7 @@
 
 A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **Gemini** usage limits across multiple Chrome profiles, combined into one shared dashboard.
 
-> **Status:** `v0.27.3` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
+> **Status:** `v0.27.4` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
 >
 > 🔗 Live PWA: <https://dcs-rob.github.io/usage-dashboard/> · 📋 [ROADMAP](ROADMAP.md) · 📝 [CHANGELOG](CHANGELOG.md)
 
