@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.27.0";
+const APP_VERSION = "0.27.1";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -2883,6 +2883,131 @@ function formatTimeAgo(timestamp) {
     return new Date(timestamp).toLocaleDateString("en-GB");
 }
 
+/* ==========================================================================
+   CLAUDE VERVERSEN ZONDER TABBLAD-CIRCUS  (v0.27.1)
+   Volgorde — de eerste die lukt wint:
+     1. bericht aan het content script in een reeds open claude.ai-tab   (instant)
+     2. eenmalige injectie in datzelfde tabblad                          (instant; werkt
+        óók als het content script verouderd is, bv. vlak na een extensie-update)
+     3. de bestaande usage-tab herladen                                  (zichtbaar, maar
+        het tabblad blijft gewoon in zijn tabgroep staan)
+     4. alleen als er GEEN claude.ai-tab open is: tijdelijk achtergrondtabblad
+   Stap 4 kwam in v0.27.0 veel te snel aan de beurt: na het herladen van de extensie is
+   het content script in een reeds open tabblad ongeldig ("orphaned") en antwoordt het
+   niet meer. Gevolg: bij élke refresh klapte er een tabblad open en weer dicht, terwijl
+   de eigen usage-tab ongebruikt bleef staan. Stap 2 lost dat definitief op — injectie is
+   niet afhankelijk van wat er al in het tabblad draait.
+   ========================================================================== */
+
+/* Draait IN het claude.ai-tabblad. executeScript serialiseert alléén deze functie, dus
+   hij mag niets buiten zichzelf gebruiken (geen helpers, geen constanten van hierboven).
+   Levert direct het sync-formaat op dat handleTabSync verwacht. */
+function claudeUsageInPageFetch() {
+    const get = (p) => fetch(p, { credentials: "include", cache: "no-store" })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status + " op " + p))));
+    const short = (ms) => {
+        const v = Math.max(0, ms), h = Math.floor(v / 3600000), m = Math.floor((v % 3600000) / 60000);
+        return h > 0 ? `${h} hr ${m} min` : `${m} min`;
+    };
+    return get("/api/organizations")
+        .then((orgs) => {
+            const list = Array.isArray(orgs) ? orgs : [];
+            const org = list.find(o => Array.isArray(o.capabilities) && o.capabilities.includes("chat")) || list[0];
+            if (!org || !org.uuid) throw new Error("geen bruikbare organisatie gevonden");
+            return get("/api/organizations/" + org.uuid + "/usage");
+        })
+        .then((u) => {
+            const fh = (u && u.five_hour) || {}, sd = (u && u.seven_day) || {};
+            // utilization = percentage VERBRUIKT; het dashboard rekent in "over".
+            const pctSession = typeof fh.utilization === "number" ? Math.max(0, 100 - fh.utilization) : null;
+            const pctWeekly  = typeof sd.utilization === "number" ? Math.max(0, 100 - sd.utilization) : null;
+            if (pctSession === null && pctWeekly === null) throw new Error("geen utilization-velden");
+            const sTs = fh.resets_at ? Date.parse(fh.resets_at) : NaN;
+            const wTs = sd.resets_at ? Date.parse(sd.resets_at) : NaN;
+            return { ok: true, data: {
+                pctRemaining: pctSession !== null ? pctSession : 100,
+                pctRemainingWeekly: pctWeekly,
+                resetSessionAbsoluteTs: isNaN(sTs) ? undefined : sTs,
+                resetWeeklyAbsoluteTs:  isNaN(wTs) ? undefined : wTs,
+                resetSession: isNaN(sTs) ? "" : "Resets in " + short(sTs - Date.now()),
+                resetWeekly:  isNaN(wTs) ? "" : "Resets " + new Date(wTs).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }),
+                tokensUsed: pctSession !== null ? Math.round(((100 - pctSession) / 100) * 200000) : 0,
+                source: "api",
+                summary: `Via API: Sessie=${pctSession}% over, Week=${pctWeekly}% over.`
+            }};
+        })
+        .catch((e) => ({ ok: false, error: String((e && e.message) || e) }));
+}
+
+/* Zet de open claude.ai-tabs op volgorde van geschiktheid: eerst de usage-pagina (die
+   mag desnoods herladen worden), dan het actieve tabblad, dan de rest. */
+function sortClaudeTabsByPreference(tabs) {
+    return (tabs || []).slice().sort((a, b) => {
+        const score = (t) => (t.url && t.url.includes("settings/usage") ? 2 : 0) + (t.active ? 1 : 0);
+        return score(b) - score(a);
+    });
+}
+
+/* Stap 1 t/m 4 uit het blok hierboven. `hooks` bevat optionele UI-callbacks
+   (onFast/onReload/onNewTab) zodat de dashboardknop een toast kan tonen en de
+   achtergrond-poller stil kan blijven. */
+function refreshClaudeViaOpenTabs(tabs, fallbackUrl, hooks) {
+    const h = hooks || {};
+    const ordered = sortClaudeTabsByPreference(tabs);
+    if (!ordered.length) { if (h.onNewTab) h.onNewTab(); return; }
+
+    let settled = false;
+    const finish = (cb) => { if (settled) return; settled = true; if (cb) cb(); };
+
+    // --- Stap 3/4: laatste redmiddel, pas gebruiken als 1 en 2 niets opleveren.
+    const lastResort = () => {
+        const usageTab = ordered.find(t => t.url && t.url.includes("settings/usage"));
+        if (usageTab) {
+            // Herladen laat het tabblad staan waar het staat (incl. tabgroep).
+            finish(h.onReload);
+            chrome.tabs.reload(usageTab.id, {}, () => { void chrome.runtime.lastError; });
+        } else {
+            finish(h.onNewTab);
+        }
+    };
+
+    // --- Stap 2: injecteren. Onafhankelijk van het content script in het tabblad.
+    let injecting = false;
+    const injectInto = (idx) => {
+        if (settled) return;
+        if (idx === 0) { if (injecting) return; injecting = true; }
+        if (idx >= ordered.length || !chrome.scripting) { lastResort(); return; }
+        chrome.scripting.executeScript(
+            { target: { tabId: ordered[idx].id }, func: claudeUsageInPageFetch },
+            (results) => {
+                if (chrome.runtime.lastError) { void chrome.runtime.lastError; injectInto(idx + 1); return; }
+                const res = results && results[0] && results[0].result;
+                if (!res || !res.ok || !res.data) { injectInto(idx + 1); return; }
+                finish(h.onFast);
+                chrome.runtime.sendMessage(
+                    { type: "SYNC_FROM_TAB", provider: "claude", data: res.data },
+                    () => { void chrome.runtime.lastError; }
+                );
+            }
+        );
+    };
+
+    // --- Stap 1: het snelste pad — een geldig content script antwoordt vrijwel direct.
+    let pending = ordered.length;
+    const tryInjectAfterMessages = () => { if (!settled && pending <= 0) injectInto(0); };
+
+    ordered.forEach((t) => {
+        chrome.tabs.sendMessage(t.id, { type: "REFRESH_NOW", provider: "claude" }, (resp) => {
+            void chrome.runtime.lastError;   // ongeldig/ontbrekend content script: negeren
+            pending--;
+            if (resp && resp.ok) { finish(h.onFast); return; }
+            tryInjectAfterMessages();
+        });
+    });
+    // Vangnet als een callback nooit terugkomt (bevroren/discarded tabblad).
+    setTimeout(() => { if (!settled) injectInto(0); }, 1200);
+}
+
 /* Opent een onzichtbaar tabblad dat door het content script gemeten wordt en sluit het
    daarna. 16s i.p.v. de oude 8,5s: achtergrondtabs worden door Chrome getroteld en de
    zware claude.ai-SPA haalde 8,5s vaak niet — dan sloot het tabblad vóór de meting en
@@ -2899,32 +3024,25 @@ function openBackgroundScrapeTab(url) {
 }
 
 function triggerSyncNow(provider) {
-    const url = provider === "claude" 
-        ? "https://claude.ai/settings/usage" 
+    const url = provider === "claude"
+        ? "https://claude.ai/settings/usage"
         : "https://chatgpt.com/codex/cloud/settings/analytics#personal-usage";
-        
+
     if (typeof chrome !== "undefined" && chrome.tabs) {
         // Query utilizing subdomains (*.claude.ai and *.chatgpt.com) to find open tabs
         const queryPattern = provider === "claude" ? "*://*.claude.ai/*" : "*://*.chatgpt.com/*";
-        
+
         chrome.tabs.query({ url: queryPattern }, (tabs) => {
             // Zwijg netjes als Chrome de tabs nu niet wil bewerken (bv. tijdens tab-drag)
             if (chrome.runtime.lastError || !tabs) { void chrome.runtime.lastError; return; }
 
-            // Claude: elke open claude.ai-tab kan de JSON-API bevragen — geen reload nodig
-            // en de usage-pagina hoeft niet open te staan. Dit is het snelle pad (~0,2s).
+            // Claude: gebruik altijd een tabblad dat de gebruiker al open heeft staan.
             if (provider === "claude" && tabs.length) {
-                let answered = false;
-                tabs.forEach(t => {
-                    chrome.tabs.sendMessage(t.id, { type: "REFRESH_NOW", provider: "claude" }, (resp) => {
-                        void chrome.runtime.lastError;   // tabs zonder content script negeren
-                        if (answered || !resp || !resp.ok) return;
-                        answered = true;
-                        showToast(`<i class="fa-solid fa-bolt" style="color: var(--accent-green);"></i> Claude bijgewerkt via API.`);
-                    });
+                refreshClaudeViaOpenTabs(tabs, url, {
+                    onFast: () => showToast(`<i class="fa-solid fa-bolt" style="color: var(--accent-green);"></i> Claude bijgewerkt via API.`),
+                    onReload: () => showToast(`<i class="fa-solid fa-arrows-rotate fa-spin"></i> Tab found! Reloading the page in the background...`),
+                    onNewTab: () => openBackgroundScrapeTab(url)
                 });
-                // Geen enkel tabblad antwoordde op tijd → open alsnog een achtergrondtab.
-                setTimeout(() => { if (!answered) openBackgroundScrapeTab(url); }, 1500);
                 return;
             }
 

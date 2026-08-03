@@ -4,6 +4,41 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.1] — 2026-08-03
+
+### Geen open-en-dicht klappende tabbladen meer bij een Claude-refresh
+
+**Klacht:** sinds v0.27.0 werd bij élke refresh een nieuw claude.ai-tabblad geopend en
+weer gesloten. Vóór v0.27.0 werd het bestaande tabblad simpelweg herladen, zodat het in
+de tabgroep "Usage" kon blijven staan en handmatig te bekijken was.
+
+**Oorzaak:** v0.27.0 vraagt een reeds open claude.ai-tab via een bericht (`REFRESH_NOW`)
+om de meting te doen. Maar na het herladen van de extensie is het content script in een
+al geopend tabblad ongeldig ("orphaned") — het luistert niet meer. Er kwam dus nooit
+antwoord, en de code viel meteen terug op het laatste redmiddel: een tijdelijk
+achtergrondtabblad. Dat bleef zo tot dat tabblad zelf een keer herladen werd, dus in de
+praktijk bij elke refresh opnieuw.
+
+**Opgelost met een nette ladder** (`refreshClaudeViaOpenTabs()`, in `app.js` én
+`background.js`) — de eerste stap die lukt wint:
+
+1. **Bericht** aan het content script in een open claude.ai-tab — instant, niets zichtbaar.
+2. **Injectie** van de API-meting in datzelfde tabblad (`chrome.scripting.executeScript`).
+   Onafhankelijk van wat er al in het tabblad draait, dus dit werkt óók direct na een
+   extensie-update. Geen reload, geen nieuw tabblad — de tab blijft staan waar hij staat.
+3. **Herladen** van de bestaande usage-tab (het oude gedrag; blijft in zijn tabgroep).
+4. Pas als er **geen enkele** claude.ai-tab open is: een tijdelijk achtergrondtabblad.
+
+Tabbladen worden op geschiktheid gesorteerd: eerst `settings/usage` (die mag desnoods
+herladen worden), dan het actieve tabblad, dan de rest. Een gewone chat-tab wordt nooit
+herladen — daar zou je een half getypt bericht mee kwijtraken.
+
+**Ook meegenomen:** het accountlabel op een kaart verdween bij een snelle API-refresh,
+omdat de API-meting alleen cijfers kent en geen naam uit de pagina leest. `handleTabSync()`
+behoudt nu het eerder gedetecteerde account als de nieuwe meting er geen meelevert.
+
+---
+
 ## [0.27.0] — 2026-08-03
 
 ### Claude-cijfers nu via Claude's eigen JSON-API — ~0,7s i.p.v. 8-16s
