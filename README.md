@@ -2,7 +2,7 @@
 
 A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **Gemini** usage limits across multiple Chrome profiles, combined into one shared dashboard.
 
-> **Status:** `v0.27.0` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
+> **Status:** `v0.27.1` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
 >
 > 🔗 Live PWA: <https://dcs-rob.github.io/usage-dashboard/> · 📋 [ROADMAP](ROADMAP.md) · 📝 [CHANGELOG](CHANGELOG.md)
 
@@ -12,6 +12,7 @@ A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **
 
 - Reads your remaining limits (5-hour / weekly / monthly windows) from the **currently logged-in** session on `claude.ai`, `chatgpt.com` and `gemini.google.com`.
 - **Claude uses Claude's own JSON API** (`/api/organizations/<uuid>/usage`) since v0.27.0 — roughly **0.7 s** instead of 8-16 s, works on any `claude.ai` tab (the usage page does not need to be open), and is immune to promo banners, DOM changes and page language. Reading the page is kept as a fallback. The other providers are still scraped from the page.
+- **A refresh reuses a tab you already have open.** If a `claude.ai` tab is open, the extension measures inside it — first by messaging its content script, otherwise by injecting the API call (`chrome.scripting.executeScript`), which also works right after an extension reload when the existing content script is orphaned. Only if no `claude.ai` tab exists at all does it open a temporary background tab. Your usage tab therefore stays put, tab group and all.
 - Shows one card per **(profile × subscription)** with full pace bars: remaining capacity, remaining time, reset moment and a safe/watch/danger status.
 - Syncs all profiles into **one shared, end-to-end encrypted cloud document**, so your phone (PWA) and other Chrome profiles see the same dashboard in real time.
 - **Multi-account:** one Chrome profile = one session per provider. Multiple accounts (e.g. "Kevin — work", "Rob — personal") each run in their own Chrome profile and appear as separate cards.
