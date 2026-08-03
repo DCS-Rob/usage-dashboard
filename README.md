@@ -2,7 +2,7 @@
 
 A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **Gemini** usage limits across multiple Chrome profiles, combined into one shared dashboard.
 
-> **Status:** `v0.26.0` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
+> **Status:** `v0.27.0` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
 >
 > 🔗 Live PWA: <https://dcs-rob.github.io/usage-dashboard/> · 📋 [ROADMAP](ROADMAP.md) · 📝 [CHANGELOG](CHANGELOG.md)
 
@@ -10,7 +10,8 @@ A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **
 
 ## What it does
 
-- Scrapes the **currently logged-in** session on `claude.ai`, `chatgpt.com` and `gemini.google.com` and reads your remaining limits (5-hour / weekly / monthly windows).
+- Reads your remaining limits (5-hour / weekly / monthly windows) from the **currently logged-in** session on `claude.ai`, `chatgpt.com` and `gemini.google.com`.
+- **Claude uses Claude's own JSON API** (`/api/organizations/<uuid>/usage`) since v0.27.0 — roughly **0.7 s** instead of 8-16 s, works on any `claude.ai` tab (the usage page does not need to be open), and is immune to promo banners, DOM changes and page language. Reading the page is kept as a fallback. The other providers are still scraped from the page.
 - Shows one card per **(profile × subscription)** with full pace bars: remaining capacity, remaining time, reset moment and a safe/watch/danger status.
 - Syncs all profiles into **one shared, end-to-end encrypted cloud document**, so your phone (PWA) and other Chrome profiles see the same dashboard in real time.
 - **Multi-account:** one Chrome profile = one session per provider. Multiple accounts (e.g. "Kevin — work", "Rob — personal") each run in their own Chrome profile and appear as separate cards.
@@ -27,7 +28,7 @@ A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **
                      E2E XOR-encrypted payload
 ```
 
-- **Extension** = the "sensor": content scripts scrape, the service worker pushes to the cloud.
+- **Extension** = the "sensor": content scripts read the numbers (Claude via its JSON API, the rest from the page), the service worker pushes to the cloud.
 - **PWA** = a lightweight viewer of the same data (cannot scrape — that needs the extension).
 - **Cloud** = a shared bin. **Firebase** is primary (realtime via Server-Sent Events, < 1s latency); **npoint.io** is the fallback.
 
