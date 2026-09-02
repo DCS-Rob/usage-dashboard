@@ -2,7 +2,7 @@
    USAGE DASHBOARD - CLIENT CONTROLLER & DATABASE LAYER
    ========================================================================== */
 
-const APP_VERSION = "0.27.4";
+const APP_VERSION = "0.27.5";
 
 // Firebase Realtime Database REST-endpoint (geen SDK nodig — werkt in MV3 en PWA).
 const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1.firebasedatabase.app";
@@ -10,7 +10,7 @@ const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1
 // Standaard publieke PWA-host (GitHub Pages). Werkt op elke telefoon zonder Tailscale.
 // De gebruiker kan dit overschrijven in Instellingen → Mobiele Synchronisatie
 // (bv. een eigen Tailscale-host voor volledig privé verkeer). Opgeslagen onder lt_pwa_host.
-const DEFAULT_PWA_HOST = "https://dcs-rob.github.io/usage-dashboard";
+const DEFAULT_PWA_HOST = "https://diederencustomsolutions.github.io/usage-dashboard";
 const DEPLOY_VERSION_CHECK_URL = `${DEFAULT_PWA_HOST}/app.js`;
 const EXTENSION_ID = "dclbninbcejifmbadajdolibjcifmloc";
 
@@ -650,7 +650,7 @@ function showExtensionInviteInstallMessage(inviteUrl) {
         authMsg.style.display = "block";
         authMsg.innerHTML = `
             <strong>Usage Dashboard extension required</strong>
-            <p>To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DCS-Rob/usage-dashboard" target="_blank" rel="noopener noreferrer">github.com/DCS-Rob/usage-dashboard</a></p>
+            <p>To contribute your data, you need the Usage Dashboard Chrome extension. Ask your dashboard admin to share the extension files, or visit: <a href="https://github.com/DiederenCustomSolutions/usage-dashboard" target="_blank" rel="noopener noreferrer">github.com/DiederenCustomSolutions/usage-dashboard</a></p>
             <div class="invite-install-options">
                 <div id="invite-extension-detected" class="invite-install-option invite-extension-detected" style="display:none;">
                     <strong>Extension detected in this Chrome profile</strong>
@@ -692,7 +692,7 @@ function setupInviteInstallActions(inviteUrl) {
     const downloadBtn = document.getElementById("btn-download-extension-zip");
     if (downloadBtn) {
         downloadBtn.addEventListener("click", () => {
-            window.open("https://github.com/DCS-Rob/usage-dashboard/archive/refs/heads/main.zip", "_blank", "noopener,noreferrer");
+            window.open("https://github.com/DiederenCustomSolutions/usage-dashboard/archive/refs/heads/main.zip", "_blank", "noopener,noreferrer");
         });
     }
 

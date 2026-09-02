@@ -2,9 +2,9 @@
 
 A Chrome extension **+** PWA that tracks your **Claude Pro**, **ChatGPT** and **Gemini** usage limits across multiple Chrome profiles, combined into one shared dashboard.
 
-> **Status:** `v0.27.4` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
+> **Status:** `v0.27.5` — **beta**. Everything in the `0.x.x` range is internal/beta; `v1.0.0` is only tagged after an explicit owner decision (see [Versioning](#versioning--beta-policy)).
 >
-> 🔗 Live PWA: <https://dcs-rob.github.io/usage-dashboard/> · 📋 [ROADMAP](ROADMAP.md) · 📝 [CHANGELOG](CHANGELOG.md)
+> 🔗 Live PWA: <https://diederencustomsolutions.github.io/usage-dashboard/> · 📋 [ROADMAP](ROADMAP.md) · 📝 [CHANGELOG](CHANGELOG.md)
 
 ---
 
@@ -99,7 +99,7 @@ git tag vX.Y.Z && git push && git push --tags   # 3. GitHub Action builds the Re
 
 - Cloud payloads are **end-to-end encrypted**; the pairing key never leaves the invite link/QR.
 - The extension's **private signing key (`.key.pem`) is kept outside this folder** and is never committed.
-- `externally_connectable` is limited to `https://dcs-rob.github.io/*` (version/status pings only — no sync data).
+- `externally_connectable` is limited to `https://diederencustomsolutions.github.io/*` (version/status pings only — no sync data).
 - No automatic logins: scraping only reads the session you are already signed into.
 
 ---

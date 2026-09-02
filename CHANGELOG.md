@@ -4,6 +4,30 @@ Alle wijzigingen per versie. Meest recente versie bovenaan.
 
 ---
 
+## [0.27.5] — 2026-09-02
+
+### Repo verhuisd naar de organisatie — oude PWA-adres gaf 404
+
+De repo staat sinds 1-9-2026 07:45 onder `DiederenCustomSolutions/usage-dashboard` in
+plaats van onder `DCS-Rob`. GitHub redirect wél repo-adressen, maar **niet**
+Pages-adressen — `https://dcs-rob.github.io/usage-dashboard/` gaf dus gewoon 404, terwijl
+de repo zelf nog prima bereikbaar leek. De geïnstalleerde telefoon-app wees naar dat dode
+adres en kon dat zelf niet herstellen (de Force update-knop zit ín de dode app).
+
+Alle hardgecodeerde verwijzingen naar het oude adres zijn vervangen door
+`https://diederencustomsolutions.github.io/usage-dashboard`:
+- `manifest.json` — `host_permissions` en `externally_connectable` (anders mag de
+  extensie het nieuwe PWA-adres niet eens aanspreken)
+- `background.js` — `PWA_INVITE_HOST` en de origin-check voor externe berichten (anders
+  blokkeert de extensie zelf nieuwe pairing-links)
+- `app.js` — `DEFAULT_PWA_HOST` en de GitHub-links in de fallback-melding
+
+**Actie nodig op de telefoon:** het oude app-icoon van het beginscherm verwijderen en de
+PWA opnieuw installeren via het nieuwe adres — herladen of Force update lossen dit niet
+op, want die knop zit zelf in de app die naar het dode adres wijst.
+
+---
+
 ## [0.27.4] — 2026-08-03
 
 ### Versienummer en Force update waren op de telefoon verdwenen

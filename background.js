@@ -9,7 +9,7 @@ const FIREBASE_DB_URL = "https://usage-dashboard-98f1d-default-rtdb.europe-west1
 // Pas deze twee regels aan als je een eigen fork host op een andere domein.
 // PWA_INVITE_HOST: alleen de hostname (geen https://)
 // PWA_INVITE_PATH: het pad naar de app op die host
-const PWA_INVITE_HOST = "dcs-rob.github.io";
+const PWA_INVITE_HOST = "diederencustomsolutions.github.io";
 const PWA_INVITE_PATH = "/usage-dashboard";
 
 // Open the dashboard tab when the user clicks the extension action icon
@@ -97,7 +97,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 if (chrome.runtime.onMessageExternal) {
     chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
         const origin = sender && sender.origin ? sender.origin : "";
-        if (origin !== "https://dcs-rob.github.io") return false;
+        if (origin !== "https://diederencustomsolutions.github.io") return false;
 
         if (message && message.type === "USAGE_DASHBOARD_PING") {
             sendResponse({
